@@ -1,0 +1,82 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="page-header animate-in">
+    <h1 class="page-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+        项目列表
+    </h1>
+    <a href="{{ url_for('admin.create_project') }}" class="btn btn-success">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+        创建项目
+    </a>
+    <a href="{{ url_for('admin.user_list') }}" class="btn btn-primary" style="margin-left: 8px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+        用户管理
+    </a>
+</div>
+
+{% if projects %}
+<div class="card animate-in" style="animation-delay: 0.1s;">
+    <div class="card-header">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px; margin-right: 8px; color: var(--primary);">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+        项目概览
+        <span class="badge badge-primary" style="float: right;">{{ projects|length }} 个项目</span>
+    </div>
+    <div class="card-body">
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>序号</th>
+                        <th>项目名称</th>
+                        <th>工程地点</th>
+                        <th>施工单位</th>
+                        <th>项目经理</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for project in projects %}
+                    <tr>
+                        <td><span class="badge badge-primary">{{ loop.index }}</span></td>
+                        <td><strong>{{ project.name }}</strong></td>
+                        <td>{{ project.location or '-' }}</td>
+                        <td>{{ project.company or '-' }}</td>
+                        <td>{{ project.manager or '-' }}</td>
+                        <td>
+                            <a href="{{ url_for('admin.project_detail', project_id=project.id) }}" class="btn btn-primary" style="padding: 6px 12px; font-size: 0.85rem;">
+                                查看详情
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card animate-in">
+    <div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <h3>暂无项目</h3>
+        <p>点击上方按钮创建第一个项目</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

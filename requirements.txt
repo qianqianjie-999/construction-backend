@@ -1,0 +1,6 @@
+flask
+flask-sqlalchemy
+pymysql
+reportlab
+flask-cors
+python-dotenv

@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理后台登录</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: linear-gradient(135deg, #0a0f1a 0%, #1a2332 100%);
+            min-height: 100vh;
+            display: flex; align-items: center; justify-content: center;
+            color: #f1f5f9;
+        }
+        .login-box {
+            background: rgba(26, 35, 50, 0.8);
+            backdrop-filter: blur(10px);
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+            width: 100%; max-width: 400px;
+            border: 1px solid rgba(0, 212, 255, 0.2);
+        }
+        .login-box h1 {
+            color: #00d4ff;
+            font-size: 24px;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        .login-box .subtitle { color: #94a3b8; font-size: 13px; text-align: center; margin-bottom: 24px; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; color: #94a3b8; font-size: 13px; margin-bottom: 6px; }
+        .form-group input {
+            width: 100%; padding: 12px;
+            background: #0a0f1a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            color: #f1f5f9;
+            font-size: 14px;
+        }
+        .form-group input:focus { outline: none; border-color: #00d4ff; }
+        .btn {
+            width: 100%; padding: 12px;
+            background: linear-gradient(135deg, #00d4ff 0%, #0ea5e9 100%);
+            color: #0a0f1a;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .btn:hover { transform: translateY(-1px); }
+        .error { color: #ef4444; font-size: 13px; text-align: center; margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <h1>🏗 施工日志管理</h1>
+        <div class="subtitle">管理后台</div>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        <form method="POST" action="/admin/login">
+            <div class="form-group">
+                <label>用户名</label>
+                <input type="text" name="username" required autofocus>
+            </div>
+            <div class="form-group">
+                <label>密码</label>
+                <input type="password" name="password" required>
+            </div>
+            <button type="submit" class="btn">登录</button>
+        </form>
+    </div>
+</body>
+</html>

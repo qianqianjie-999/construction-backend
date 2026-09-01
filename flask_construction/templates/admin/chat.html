@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>聊天记录 - {{ project.name }}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #f5f7fa;
+            color: #1a2332;
+            line-height: 1.6;
+        }
+        .header {
+            background: linear-gradient(135deg, #1a2332 0%, #0a0f1a 100%);
+            color: #f1f5f9;
+            padding: 20px 32px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .header h1 { font-size: 20px; color: #00d4ff; margin-bottom: 4px; }
+        .header .meta { font-size: 13px; color: #94a3b8; }
+        .header a { color: #00d4ff; text-decoration: none; font-size: 13px; }
+        .container {
+            max-width: 1000px;
+            margin: 24px auto;
+            padding: 0 16px;
+        }
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .toolbar .title { font-size: 16px; font-weight: 600; }
+        .toolbar .count { font-size: 13px; color: #64748b; }
+        .messages-list {
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .message-item {
+            display: flex;
+            padding: 16px 20px;
+            border-bottom: 1px solid #f1f5f9;
+            gap: 12px;
+        }
+        .message-item:last-child { border-bottom: none; }
+        .message-item:hover { background: #f8fafc; }
+        .avatar {
+            width: 40px; height: 40px;
+            background: linear-gradient(135deg, #00d4ff 0%, #0ea5e9 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+        .message-content { flex: 1; min-width: 0; }
+        .message-header {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+        .nickname { font-weight: 600; font-size: 14px; color: #1a2332; }
+        .username { font-size: 12px; color: #94a3b8; }
+        .time { font-size: 12px; color: #64748b; margin-left: auto; }
+        .message-body {
+            padding: 10px 14px;
+            background: #f1f5f9;
+            border-radius: 8px;
+            font-size: 14px;
+            display: inline-block;
+            max-width: 100%;
+            word-break: break-word;
+        }
+        .message-body.text { background: #f1f5f9; color: #1a2332; }
+        .message-body.image { background: transparent; padding: 0; }
+        .message-body.image img {
+            max-width: 240px;
+            max-height: 240px;
+            border-radius: 8px;
+            display: block;
+        }
+        .message-body.log-card {
+            background: linear-gradient(135deg, #ecfeff 0%, #f0f9ff 100%);
+            border-left: 3px solid #00d4ff;
+            color: #0c4a6e;
+        }
+        .message-body.log-card .label {
+            color: #00d4ff;
+            font-weight: 600;
+            font-size: 13px;
+            margin-bottom: 4px;
+        }
+        .message-body.log-card .meta { font-size: 12px; color: #475569; }
+        .empty {
+            text-align: center;
+            padding: 60px 20px;
+            color: #94a3b8;
+        }
+        .empty .icon { font-size: 48px; margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="/admin">← 返回项目列表</a>
+        <h1>💬 {{ project.name }} - 聊天记录</h1>
+        <div class="meta">
+            项目地点：{{ project.location or '未填写' }} ·
+            施工单位：{{ project.company or '未填写' }} ·
+            项目经理：{{ project.manager or '未填写' }}
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="toolbar">
+            <div class="title">所有消息</div>
+            <div class="count">共 {{ messages|length }} 条</div>
+        </div>
+
+        {% if messages %}
+        <div class="messages-list">
+            {% for msg in messages %}
+            {% set user = users.get(msg.user_id) %}
+            <div class="message-item">
+                <div class="avatar">
+                    {{ (user.nickname if user and user.nickname else (user.username if user else '?'))[:1] }}
+                </div>
+                <div class="message-content">
+                    <div class="message-header">
+                        <span class="nickname">
+                            {{ user.nickname if user and user.nickname else (user.username if user else '未知用户') }}
+                        </span>
+                        <span class="username">@{{ user.username if user else 'unknown' }}</span>
+                        <span class="time">{{ msg.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+                    </div>
+                    {% if msg.content_type == 'text' %}
+                        <div class="message-body text">{{ msg.content }}</div>
+                    {% elif msg.content_type == 'image' %}
+                        <div class="message-body image">
+                            <img src="/api/chat/images/{{ msg.content }}" alt="图片消息">
+                        </div>
+                    {% elif msg.content_type == 'log_card' %}
+                        <div class="message-body log-card">
+                            <div class="label">📋 施工日志卡片</div>
+                            <div class="meta">日志 ID: {{ msg.log_id }} · <a href="/admin/project/{{ project.id }}#log-{{ msg.log_id }}" style="color:#00d4ff">查看详情</a></div>
+                        </div>
+                    {% else %}
+                        <div class="message-body text">{{ msg.content }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="messages-list">
+            <div class="empty">
+                <div class="icon">💬</div>
+                <div>暂无聊天记录</div>
+                <div style="font-size:13px;margin-top:8px;">在 Flutter 应用中进入此项目群发送消息即可查看</div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

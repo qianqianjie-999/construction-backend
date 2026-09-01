@@ -1,0 +1,137 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="page-header animate-in">
+    <h1 class="page-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+        {{ project.name }}
+    </h1>
+    <div style="display: flex; gap: 12px;">
+        <a href="{{ url_for('admin.project_chat', project_id=project.id) }}" class="btn btn-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+            聊天记录
+        </a>
+        <a href="{{ url_for('admin.export_project', project_id=project.id) }}" class="btn btn-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            导出PDF
+        </a>
+        <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-secondary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+            返回列表
+        </a>
+    </div>
+</div>
+
+<div class="card animate-in" style="margin-bottom: 2rem;">
+    <div class="card-header">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px; margin-right: 8px; color: var(--primary);">
+            <path d="M19 21V5a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5m-4 0h4"></path>
+        </svg>
+        项目信息
+    </div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
+            <div>
+                <div style="font-size: 0.85rem; color: var(--text-secondary);">工程地点</div>
+                <div style="font-weight: 600; margin-top: 4px;">{{ project.location or '-' }}</div>
+            </div>
+            <div>
+                <div style="font-size: 0.85rem; color: var(--text-secondary);">施工单位</div>
+                <div style="font-weight: 600; margin-top: 4px;">{{ project.company or '-' }}</div>
+            </div>
+            <div>
+                <div style="font-size: 0.85rem; color: var(--text-secondary);">项目经理</div>
+                <div style="font-weight: 600; margin-top: 4px;">{{ project.manager or '-' }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="page-header animate-in" style="animation-delay: 0.1s;">
+    <h2 class="page-title" style="font-size: 1.25rem;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 24px; height: 24px;">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+        </svg>
+        施工日志
+        <span class="badge badge-success" style="margin-left: 8px;">{{ logs|length }} 条</span>
+    </h2>
+</div>
+
+{% if logs %}
+{% for log in logs %}
+<div class="card animate-in" style="margin-bottom: 1rem; animation-delay: {{ loop.index * 0.05 }}s;">
+    <div class="card-header">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">
+                    {{ log.date.strftime('%Y年%m月%d日') }}
+                </h3>
+            </div>
+            <span class="badge badge-primary">{{ log.weather }}</span>
+        </div>
+    </div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+            <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">施工内容</div>
+                <div style="font-size: 0.95rem; color: var(--text-primary);">{{ log.work_content or '-' }}</div>
+            </div>
+            <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">使用材料</div>
+                <div style="font-size: 0.95rem; color: var(--text-primary);">{{ log.materials or '-' }}</div>
+            </div>
+            <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">出勤人员</div>
+                <div style="font-size: 0.95rem; color: var(--text-primary);">{{ log.personnel or '-' }}</div>
+            </div>
+            <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">质量安全情况</div>
+                <div style="font-size: 0.95rem; color: var(--text-primary);">{{ log.safety_notes or '-' }}</div>
+            </div>
+        </div>
+
+        {% if log.photos %}
+        <div style="margin-top: 1rem;">
+            <h4 style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.75rem;">关联照片 ({{ log.photos|length }})</h4>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                {% for photo in log.photos %}
+                <a href="{{ url_for('api.uploaded_file', filename=photo.filename) }}" target="_blank">
+                    <img src="{{ url_for('api.uploaded_file', filename=photo.filename) }}"
+                         alt="Photo"
+                         style="width: 120px; height: 90px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border);">
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="card animate-in">
+    <div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+        </svg>
+        <h3>暂无日志</h3>
+        <p>该项目中暂无施工日志记录</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
