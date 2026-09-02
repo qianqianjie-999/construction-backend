@@ -137,9 +137,8 @@ def upload_image():
 
 
 @chat.route('/images/<filename>')
-@chat_login_required
 def get_chat_image(filename):
-    """访问聊天图片"""
+    """访问聊天图片（公开访问，浏览器 img 标签不需要 token）"""
     return send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)
 
 

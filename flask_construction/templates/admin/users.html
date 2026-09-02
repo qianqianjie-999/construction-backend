@@ -104,7 +104,7 @@
                         <span class="badge user">普通用户</span>
                         {% endif %}
                     </td>
-                    <td>{{ u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else '-' }}</td>
+                    <td>{{ u.created_at | beijing_time('%Y-%m-%d %H:%M') }}</td>
                     <td>
                         <div class="actions">
                             <a href="/admin/users/{{ u.id }}/edit" class="btn btn-warning">编辑</a>

@@ -205,9 +205,8 @@ def create_log():
     }), 201
 
 @api.route('/photos/<filename>')
-@login_required
 def uploaded_file(filename):
-    """提供上传的照片访问"""
+    """提供上传的照片访问（公开访问，浏览器 img 标签不需要 token）"""
     return send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)
 
 @api.route('/export/logs', methods=['GET'])

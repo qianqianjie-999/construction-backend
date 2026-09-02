@@ -4,6 +4,13 @@ from dotenv import load_dotenv
 # 加载环境变量
 load_dotenv()
 
+
+def _parse_bool(v, default=False):
+    if isinstance(v, bool):
+        return v
+    return str(v).lower() in ('1', 'true', 'yes', 'on')
+
+
 class Config:
     """基础配置"""
     SECRET_KEY = os.environ.get('FLASK_SECRET_KEY') or os.urandom(24)
@@ -21,11 +28,20 @@ class Config:
     # 调试模式
     DEBUG = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
 
+    # ---- CORS ----
+    # 允许的 origin，多个用逗号分隔，* 表示全部允许（内网+frp 场景推荐 *）
+    CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '*')
+
+    # ---- Socket.IO ----
+    # async_mode: threading(默认/开发) / eventlet(生产推荐) / gevent
+    SOCKETIO_ASYNC_MODE = os.environ.get('SOCKETIO_ASYNC_MODE') or 'threading'
+    SOCKETIO_CORS_ORIGINS = os.environ.get('SOCKETIO_CORS_ORIGINS') or CORS_ORIGINS
+
 
 class DevelopmentConfig(Config):
     """开发环境配置"""
     DEBUG = True
-    # MariaDB 数据库连接
+    SOCKETIO_ASYNC_MODE = 'threading'
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
         'mysql+pymysql://construction_user:construction123@localhost/construction?charset=utf8mb4'
 
@@ -33,30 +49,36 @@ class DevelopmentConfig(Config):
 class ProductionConfig(Config):
     """生产环境配置"""
     DEBUG = False
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
+    # gunicorn worker 用 ggevent，async_mode 必须和 worker class 一致！
+    # （不能用 eventlet：gunicorn 没有 eventlet worker class）
+    SOCKETIO_ASYNC_MODE = os.environ.get('SOCKETIO_ASYNC_MODE') or 'gevent'
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
+        'mysql+pymysql://construction_user:construction123@localhost/construction?charset=utf8mb4'
 
     @classmethod
     def init_app(cls, app):
         super().init_app(app)
-        # 生产环境日志配置
         import logging
         from logging.handlers import RotatingFileHandler
-        import os
 
-        if not os.path.exists('logs'):
-            os.mkdir('logs')
-        file_handler = RotatingFileHandler('logs/construction.log', maxBytes=10240, backupCount=10)
+        os.makedirs('logs', exist_ok=True)
+        file_handler = RotatingFileHandler(
+            'logs/construction.log',
+            maxBytes=5 * 1024 * 1024,
+            backupCount=10,
+            encoding='utf-8',
+        )
         file_handler.setFormatter(logging.Formatter(
             '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
         ))
         file_handler.setLevel(logging.INFO)
         app.logger.addHandler(file_handler)
         app.logger.setLevel(logging.INFO)
-        app.logger.info('Construction Test startup')
+        app.logger.info('Construction Test (production) startup')
 
 
 config = {
     'development': DevelopmentConfig,
     'production': ProductionConfig,
-    'default': DevelopmentConfig
+    'default': DevelopmentConfig,
 }

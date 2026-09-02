@@ -141,7 +141,7 @@
                             {{ user.nickname if user and user.nickname else (user.username if user else '未知用户') }}
                         </span>
                         <span class="username">@{{ user.username if user else 'unknown' }}</span>
-                        <span class="time">{{ msg.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+                        <span class="time">{{ msg.created_at | beijing_time }}</span>
                     </div>
                     {% if msg.content_type == 'text' %}
                         <div class="message-body text">{{ msg.content }}</div>

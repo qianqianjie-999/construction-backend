@@ -1,0 +1,38 @@
+# ============================================================
+# frpc.toml — 内网 Rocky 9.6 frp Client（rust_frp 格式）
+# 必须与阿里云 frps.toml 完全对齐: server_port / auth / TLS
+# 完整链路: 内网 Flask:8082 → frpc → frps:9304 → 阿里云 Nginx:9304 ssl
+# ============================================================
+
+server_addr = "123.57.86.80"
+server_port = 9300
+
+# 鉴权（token 必须和 frps 一样）
+[auth]
+method = "token"
+token = "your_secure_token"
+
+# 传输协议
+[transport]
+protocol = "tcp"
+
+# TLS 加密（必须开，frps 已 enable = true）
+[transport.tls]
+enable = true
+
+# 日志
+log_file = "/var/log/frpc.log"
+log_level = "info"
+log_max_days = 7
+
+# ---------- 施工日志系统 ----------
+# 内网 Flask (gunicorn + gevent) 监听 8082
+# → frpc 映射到阿里云 9304
+# → 阿里云 Nginx listen 9304 ssl → proxy_pass 127.0.0.1:9304
+
+[[proxies]]
+name = "construction"
+type = "tcp"
+local_ip = "127.0.0.1"
+local_port = 8082
+remote_port = 9304

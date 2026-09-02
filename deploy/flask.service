@@ -1,0 +1,32 @@
+[Unit]
+Description=Construction Flask (gunicorn + gevent)
+After=network.target mariadb.service
+Wants=mariadb.service
+
+[Service]
+Type=simple
+User=qianqianjie                     # TODO: 改成你的实际用户名
+Group=qianqianjie
+WorkingDirectory=/home/qianqianjie/flutter/construction_test   # TODO: 改成实际路径
+Environment=FLASK_CONFIG=production
+EnvironmentFile=/home/qianqianjie/flutter/construction_test/.env  # TODO: 改成实际路径
+
+# gunicorn + gevent worker（端口在 gunicorn.conf.py: bind = "0.0.0.0:8082"）
+ExecStartPre=/bin/mkdir -p /home/qianqianjie/flutter/construction_test/logs
+ExecStart=/home/qianqianjie/flutter/construction_test/venv/bin/gunicorn \
+    -c gunicorn.conf.py \
+    wsgi:app
+
+# 清理进程
+ExecStartPost=/bin/sleep 2
+
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+
+# 日志
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

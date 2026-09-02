@@ -1,0 +1,19 @@
+[Unit]
+Description=FRP Client (construction)
+After=network.target flask.service
+Wants=flask.service
+
+[Service]
+Type=simple
+User=qianqianjie                     # TODO: 改成你的实际用户名
+Group=qianqianjie
+WorkingDirectory=/home/qianqianjie/flutter/construction_test/deploy
+ExecStart=/usr/local/bin/frpc -c /home/qianqianjie/flutter/construction_test/deploy/frpc.toml   # TODO: 改成 frpc 实际路径
+Restart=always
+RestartSec=3
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

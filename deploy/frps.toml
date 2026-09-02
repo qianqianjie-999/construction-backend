@@ -1,0 +1,30 @@
+# ============================================================
+# frps.toml — 阿里云 rust_frp Server 配置（用户实际配置）
+# 实际路径: /opt/rust_frp/conf/frps.toml
+# 只需要把 allow_ports 改成下面这样，其他保持原样
+# ============================================================
+
+bind_addr = "0.0.0.0"
+bind_port = 9300
+work_conn_port = 10300
+
+vhost_http_port = 9090
+vhost_https_port = 9091
+
+# ✅ 施工日志系统加 9304（和 ssh/its/arms 规律一致）
+allow_ports = [
+    { single = 9301 },   # ssh
+    { single = 9302 },   # web_its
+    { single = 9303 },   # web_arms
+    { single = 9304 },   # construction  ← 新增！
+]
+
+[auth]
+method = "token"
+token = "your_secure_token"
+
+[transport]
+protocol = "tcp"
+
+[transport.tls]
+enable = true
