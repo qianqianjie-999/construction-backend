@@ -2,24 +2,34 @@
 WSGI 入口 —— 给 gunicorn 用
 
 启动命令:
-    gunicorn -k gevent -w 1 -b 0.0.0.0:5000 -c gunicorn.conf.py wsgi:app
+    gunicorn -c gunicorn.conf.py wsgi:app
 
 关键:
-    - 导出 Flask app（不是 socketio.wsgi_app！）
-    - gevent worker 内置支持，不需要额外插件
-    - workers 必须为 1（gevent/eventlet 协程模型，多 worker 会断 Socket.IO 长连接）
+    - gevent.monkey.patch_all() 必须在所有 import 之前！
+    - 这样 Flask-SocketIO 的 engineio 才能正确检测 gevent 并启用 WebSocket
+    - workers 必须为 1（gevent 协程模型，多 worker 会断 Socket.IO 长连接）
 """
+
+# ===== 必须在任何 import 之前 patch！=====
+import gevent.monkey
+gevent.monkey.patch_all()
+# =========================================
+
 import os
 
-# 生产环境默认 production
 os.environ.setdefault('FLASK_CONFIG', 'production')
 
 from app import create_app, socketio
 from flask_construction.models import db
 from flask_construction.models import User
 
-# 创建 Flask app（init_app 内部会把 Socket.IO 注入到 app 里）
+# 创建 Flask app
 app = create_app()
+
+# 手动触发一次 engineio 的 async_mode 检测（确保识别 gevent）
+import engineio
+print(f'[wsgi] engineio async_mode = {engineio.async_mode}', flush=True)
+print(f'[wsgi] gevent patching done, version={gevent.__version__}', flush=True)
 
 # 确保表存在（幂等）
 with app.app_context():

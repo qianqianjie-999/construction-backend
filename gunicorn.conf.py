@@ -1,6 +1,10 @@
 # ============================================================
-# gunicorn.conf.py —— 生产配置
-# worker 只能 1 个！eventlet 协程模型，多 worker 会断 Socket.IO 长连接
+# gunicorn.conf.py —— 生产配置（gevent + gevent-websocket）
+#
+# 关键:
+#   - wsgi.py 里必须在最前面 import gevent.monkey; gevent.monkey.patch_all()
+#   - gevent-websocket 提供 gevent worker 的 WebSocket 支持
+#   - workers = 1（gevent 协程模型，多 worker 会断 Socket.IO 长连接）
 # ============================================================
 
 import multiprocessing
@@ -8,11 +12,10 @@ import multiprocessing
 # ---- 绑定 ----
 bind = "0.0.0.0:8082"
 
-# worker class 用 gevent（内置 ggevent，支持协程 + WebSocket）
-# eventlet 已废弃（engineio 警告），gevent 是现在推荐的
+# worker class 用 gevent（gevent 20+ 内置 WebSocket 支持）
 worker_class = "gevent"
 
-# worker 数量只能是 1（eventlet 自己处理并发）
+# worker 数量只能是 1（Socket.IO 长连接需要单进程）
 workers = 1
 
 # 每个 worker 最大请求数（防内存泄漏）
@@ -23,13 +26,16 @@ max_requests_jitter = 500
 timeout = 120
 graceful_timeout = 30
 
+# 保持连接数
+keepalive = 5
+
 # ---- 日志 ----
 accesslog = "logs/gunicorn_access.log"
 errorlog  = "logs/gunicorn_error.log"
-loglevel  = "info"
+loglevel  = "debug"
 
 # ---- 进程名 ----
 proc_name = "construction-gunicorn"
 
-# ---- 预加载 ----
+# ---- 预加载（让 gevent patch 在 fork 之前完成）----
 preload_app = True
