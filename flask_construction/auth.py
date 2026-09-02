@@ -35,9 +35,7 @@ def get_current_user():
     token = request.headers.get('Authorization')
     if token and token.startswith('Bearer '):
         raw = token[7:].strip()
-        # 向后兼容：旧版纯数字 token（仅过渡期使用，后续可移除）
-        if raw.isdigit():
-            return User.query.get(int(raw))
+        # 仅接受签名 token，杜绝明文 user_id 伪造
         user_id = _decode_token(raw)
         if user_id is not None:
             return User.query.get(user_id)

@@ -3,16 +3,34 @@ from werkzeug.utils import secure_filename
 from .models import db, User, Project, Message, MessageRead, ConstructionLog
 from datetime import datetime
 import os
-import imghdr
 from functools import wraps
 
 chat = Blueprint('chat', __name__)
 
 ALLOWED_IMG_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
+# 图片魔数签名（文件头字节）
+IMAGE_SIGNATURES = {
+    b'\xff\xd8\xff': 'jpg',
+    b'\x89PNG\r\n\x1a\n': 'png',
+    b'GIF87a': 'gif',
+    b'GIF89a': 'gif',
+    b'RIFF': 'webp',  # webp 容器 RIFF....WEBP
+}
+
 
 def allowed_image(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_IMG_EXTENSIONS
+
+
+def sniff_image_type(head):
+    """根据文件头魔数判断真实图片类型"""
+    if head.startswith(b'RIFF') and len(head) >= 12 and head[8:12] == b'WEBP':
+        return 'webp'
+    for sig, typ in IMAGE_SIGNATURES.items():
+        if head.startswith(sig):
+            return typ
+    return None
 
 
 def validate_image(file_storage):
@@ -21,7 +39,7 @@ def validate_image(file_storage):
         return False
     head = file_storage.stream.read(32)
     file_storage.stream.seek(0)
-    return imghdr.what(None, head) is not None
+    return sniff_image_type(head) is not None
 
 
 def get_current_user():

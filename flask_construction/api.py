@@ -1,6 +1,5 @@
 from flask import Blueprint, request, jsonify, current_app, send_from_directory, session, send_file
 import os
-import imghdr
 from werkzeug.utils import secure_filename
 from .models import db, Project, ConstructionLog, LogPhoto, User
 from datetime import datetime
@@ -16,19 +15,34 @@ from .auth import login_required
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
+# 图片魔数签名（文件头字节），用于校验真实内容类型
+IMAGE_SIGNATURES = {
+    b'\xff\xd8\xff': 'jpg',          # JPEG
+    b'\x89PNG\r\n\x1a\n': 'png',     # PNG
+    b'GIF87a': 'gif',                # GIF87a
+    b'GIF89a': 'gif',                # GIF89a
+}
+
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def sniff_image_type(head):
+    """根据文件头魔数判断真实图片类型，返回 'jpg'/'png'/'gif' 或 None"""
+    for sig, typ in IMAGE_SIGNATURES.items():
+        if head.startswith(sig):
+            return typ
+    return None
 
 
 def validate_image(file_storage):
     """校验上传文件：扩展名 + 真实内容类型（魔数），防止伪装文件上传"""
     if not file_storage or not allowed_file(file_storage.filename):
         return False
-    # 读取文件头判断真实图片类型
     head = file_storage.stream.read(32)
     file_storage.stream.seek(0)  # 重置指针，便于后续 save
-    return imghdr.what(None, head) is not None
+    return sniff_image_type(head) is not None
 
 
 def save_uploaded_file(file_storage, prefix=''):
