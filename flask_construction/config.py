@@ -49,9 +49,9 @@ class DevelopmentConfig(Config):
 class ProductionConfig(Config):
     """生产环境配置"""
     DEBUG = False
-    # gunicorn worker 用 ggevent，async_mode 必须和 worker class 一致！
-    # （不能用 eventlet：gunicorn 没有 eventlet worker class）
-    SOCKETIO_ASYNC_MODE = os.environ.get('SOCKETIO_ASYNC_MODE') or 'gevent'
+    # gunicorn -k gevent 启动时 gevent 已 patch 所有标准库，
+    # async_mode 设为 None 让 python-socketio 自动检测（推荐，跨版本兼容）
+    SOCKETIO_ASYNC_MODE = os.environ.get('SOCKETIO_ASYNC_MODE') or None
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
         'mysql+pymysql://construction_user:construction123@localhost/construction?charset=utf8mb4'
 
