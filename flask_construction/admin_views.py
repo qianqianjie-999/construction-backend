@@ -122,6 +122,29 @@ def export_project(project_id):
         return "PDF generation failed", 500
 
 
+@admin.route('/admin/project/<int:project_id>/delete', methods=['POST'])
+@admin_login_required
+def delete_project(project_id):
+    """删除项目及其所有关联数据（日志、照片、聊天消息、磁盘文件）"""
+    project = Project.query.get_or_404(project_id)
+    project_name = project.name
+
+    # 1. 删除关联的日志照片文件
+    for log in project.logs:
+        for photo in log.photos:
+            try:
+                os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], photo.filename))
+            except OSError:
+                pass  # 文件已不存在就忽略
+
+    # 2. 级联删除（SQLAlchemy relationship cascade 会处理 logs/photos/messages）
+    db.session.delete(project)
+    db.session.commit()
+
+    flash(f'项目「{project_name}」已删除', 'success')
+    return redirect(url_for('admin.admin_dashboard'))
+
+
 # ============ 用户管理（人工分配账号） ============
 
 @admin.route('/admin/users')

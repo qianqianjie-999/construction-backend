@@ -83,6 +83,26 @@ def create_project():
     db.session.commit()
     return jsonify({'id': project.id, 'message': 'Project created'}), 201
 
+@api.route('/projects/<int:project_id>', methods=['DELETE'])
+@login_required
+def delete_project(project_id):
+    """删除项目（级联删除关联的日志、照片、聊天消息）"""
+    project = Project.query.get_or_404(project_id)
+
+    # 1. 删除关联的日志照片文件
+    logs = ConstructionLog.query.filter_by(project_id=project_id).all()
+    for log in logs:
+        for photo in log.photos:
+            try:
+                os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], photo.filename))
+            except OSError:
+                pass  # 文件已不存在就忽略
+
+    # 2. 级联删除（SQLAlchemy relationship cascade 会处理）
+    db.session.delete(project)
+    db.session.commit()
+    return jsonify({'message': '项目已删除'}), 200
+
 @api.route('/logs', methods=['GET'])
 @login_required
 def get_logs():
