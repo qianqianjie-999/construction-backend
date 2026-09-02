@@ -36,9 +36,15 @@ def create_app(config_name=None):
     # 初始化数据库
     db.init_app(app)
 
-    # 初始化 SocketIO（async_mode 和 cors 从配置来）
+    # 初始化 SocketIO
     socketio.cors_allowed_origins = app.config.get('SOCKETIO_CORS_ORIGINS', '*')
-    socketio.init_app(app, async_mode=app.config.get('SOCKETIO_ASYNC_MODE'))
+    # async_mode=None 表示让 engineio 自动检测（gevent/eventlet/threading），
+    # 显式传 None 新版会报 "Invalid async_mode"，所以只有有值时才传参数
+    async_mode = app.config.get('SOCKETIO_ASYNC_MODE')
+    if async_mode:
+        socketio.init_app(app, async_mode=async_mode)
+    else:
+        socketio.init_app(app)
 
     # 注册蓝图
     from flask_construction.api import api
