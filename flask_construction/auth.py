@@ -2,8 +2,29 @@ from functools import wraps
 from flask import Blueprint, request, jsonify, session, current_app
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from .models import User, db
+import time
+from collections import defaultdict
 
 auth = Blueprint('auth', __name__)
+
+# ===== 登录限流（防暴力破解）=====
+# 内存计数：{ key: [时间戳, ...] }，key 为 ip:username
+_login_attempts = defaultdict(list)
+LOGIN_MAX_ATTEMPTS = 5       # 最大失败次数
+LOGIN_WINDOW_SECONDS = 300   # 统计窗口（秒）
+
+
+def _too_many_attempts(key):
+    """判断该 key 在窗口内是否超过失败次数上限"""
+    now = time.time()
+    # 清理窗口外的旧记录
+    attempts = [t for t in _login_attempts[key] if now - t < LOGIN_WINDOW_SECONDS]
+    _login_attempts[key] = attempts
+    return len(attempts) >= LOGIN_MAX_ATTEMPTS
+
+
+def _record_attempt(key):
+    _login_attempts[key].append(time.time())
 
 
 def _serializer():
@@ -78,8 +99,16 @@ def login():
     if not username or not password:
         return jsonify({'error': 'Username and password required'}), 400
 
+    # 暴力破解防护：按 IP+用户名限流
+    client_ip = request.remote_addr or 'unknown'
+    attempt_key = f"{client_ip}:{username}"
+    if _too_many_attempts(attempt_key):
+        return jsonify({'error': 'Too many login attempts. Please try again later.'}), 429
+
     user = User.query.filter_by(username=username).first()
     if user and user.check_password(password):
+        # 登录成功，清空该 key 的失败计数
+        _login_attempts.pop(attempt_key, None)
         session['user_id'] = user.id
         session['username'] = user.username
         return jsonify({
@@ -91,6 +120,8 @@ def login():
             'token': generate_token(user.id)  # 签名 token，防伪造
         })
 
+    # 登录失败，记录一次
+    _record_attempt(attempt_key)
     return jsonify({'error': 'Invalid credentials'}), 401
 
 

@@ -49,8 +49,8 @@ class ConstructionLog(db.Model):
     __tablename__ = 'construction_logs'
     
     id = db.Column(db.Integer, primary_key=True)
-    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
-    date = db.Column(db.Date, nullable=False)              # 日期
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False, index=True)
+    date = db.Column(db.Date, nullable=False, index=True) # 日期
     weather = db.Column(db.String(50))                    # 天气情况
     temperature = db.Column(db.String(20))                # 气温
     wind_force = db.Column(db.String(20))                 # 风力
@@ -73,7 +73,7 @@ class LogPhoto(db.Model):
     __tablename__ = 'log_photos'
     
     id = db.Column(db.Integer, primary_key=True)
-    log_id = db.Column(db.Integer, db.ForeignKey('construction_logs.id'), nullable=False)
+    log_id = db.Column(db.Integer, db.ForeignKey('construction_logs.id'), nullable=False, index=True)
     filename = db.Column(db.String(255), nullable=False)  # 文件在服务器上的存储名
     original_filename = db.Column(db.String(255))        # 原始文件名
     photo_type = db.Column(db.String(20), default='site') # 'site' 现场照片, 'certificate' 合格证
@@ -85,12 +85,12 @@ class Message(db.Model):
     __tablename__ = 'messages'
     
     id = db.Column(db.Integer, primary_key=True)
-    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     content_type = db.Column(db.String(20), default='text')  # 'text', 'image', 'log_card'
     content = db.Column(db.Text)                              # 文本内容或图片文件名
     log_id = db.Column(db.Integer, db.ForeignKey('construction_logs.id'))  # 转发日志卡片时引用
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     
     user = db.relationship('User', backref='messages')
     log = db.relationship('ConstructionLog', backref='forwarded_in_messages')
@@ -119,8 +119,8 @@ class MessageRead(db.Model):
     __tablename__ = 'message_reads'
     
     id = db.Column(db.Integer, primary_key=True)
-    message_id = db.Column(db.Integer, db.ForeignKey('messages.id'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    message_id = db.Column(db.Integer, db.ForeignKey('messages.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     read_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     __table_args__ = (db.UniqueConstraint('message_id', 'user_id', name='_message_user_uc'),)
