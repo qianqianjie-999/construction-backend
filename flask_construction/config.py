@@ -50,8 +50,8 @@ class ProductionConfig(Config):
     """生产环境配置"""
     DEBUG = False
     # gunicorn -k gevent 启动时 gevent 已 patch 所有标准库，
-    # async_mode 设为 None 让 python-socketio 自动检测（推荐，跨版本兼容）
-    SOCKETIO_ASYNC_MODE = os.environ.get('SOCKETIO_ASYNC_MODE') or None
+    # 硬编码 None 让 engineio 自动检测到 gevent（最稳妥，不读 .env 避免被 eventlet 等坑）
+    SOCKETIO_ASYNC_MODE = None
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
         'mysql+pymysql://construction_user:construction123@localhost/construction?charset=utf8mb4'
 
