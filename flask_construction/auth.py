@@ -1,8 +1,31 @@
 from functools import wraps
-from flask import Blueprint, request, jsonify, session
+from flask import Blueprint, request, jsonify, session, current_app
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from .models import User, db
 
 auth = Blueprint('auth', __name__)
+
+
+def _serializer():
+    """构建签名序列化器，密钥取自应用配置 SECRET_KEY"""
+    secret = current_app.config.get('SECRET_KEY')
+    return URLSafeTimedSerializer(secret, salt='auth-token')
+
+
+def generate_token(user_id):
+    """为用户生成签名 token（含过期时间，默认 30 天）"""
+    s = _serializer()
+    return s.dumps({'uid': user_id})
+
+
+def _decode_token(token):
+    """解析签名 token，返回 user_id；无效或过期返回 None"""
+    s = _serializer()
+    try:
+        data = s.loads(token, max_age=3600 * 24 * 30)  # 30 天有效期
+        return data.get('uid')
+    except (BadSignature, SignatureExpired):
+        return None
 
 
 def get_current_user():
@@ -11,11 +34,13 @@ def get_current_user():
         return User.query.get(session['user_id'])
     token = request.headers.get('Authorization')
     if token and token.startswith('Bearer '):
-        try:
-            user_id = int(token[7:])
+        raw = token[7:].strip()
+        # 向后兼容：旧版纯数字 token（仅过渡期使用，后续可移除）
+        if raw.isdigit():
+            return User.query.get(int(raw))
+        user_id = _decode_token(raw)
+        if user_id is not None:
             return User.query.get(user_id)
-        except (ValueError, TypeError):
-            return None
     return None
 
 
@@ -65,7 +90,7 @@ def login():
             'nickname': user.nickname or user.username,
             'avatar': user.avatar,
             'role': user.role,
-            'token': str(user.id)  # 使用 user_id 作为简单 token（与 SocketIO 配合）
+            'token': generate_token(user.id)  # 签名 token，防伪造
         })
 
     return jsonify({'error': 'Invalid credentials'}), 401

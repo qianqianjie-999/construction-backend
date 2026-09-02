@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app, send_from_directory, session, send_file
 import os
+import imghdr
 from werkzeug.utils import secure_filename
 from .models import db, Project, ConstructionLog, LogPhoto, User
 from datetime import datetime
@@ -19,7 +20,29 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+
+def validate_image(file_storage):
+    """校验上传文件：扩展名 + 真实内容类型（魔数），防止伪装文件上传"""
+    if not file_storage or not allowed_file(file_storage.filename):
+        return False
+    # 读取文件头判断真实图片类型
+    head = file_storage.stream.read(32)
+    file_storage.stream.seek(0)  # 重置指针，便于后续 save
+    return imghdr.what(None, head) is not None
+
+
+def save_uploaded_file(file_storage, prefix=''):
+    """安全保存上传文件，返回唯一文件名；校验失败返回 None"""
+    if not validate_image(file_storage):
+        return None
+    filename = secure_filename(file_storage.filename)
+    unique_filename = f"{prefix}{datetime.now().strftime('%Y%m%d%H%M%S%f')}_{filename}"
+    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
+    file_storage.save(file_path)
+    return unique_filename
+
 @api.route('/projects', methods=['GET'])
+@login_required
 def get_projects():
     """获取所有项目列表"""
     projects = Project.query.all()
@@ -47,6 +70,7 @@ def create_project():
     return jsonify({'id': project.id, 'message': 'Project created'}), 201
 
 @api.route('/logs', methods=['GET'])
+@login_required
 def get_logs():
     """获取指定项目的日志列表"""
     project_id = request.args.get('project_id')
@@ -86,12 +110,19 @@ def get_logs():
     return jsonify(result)
 
 @api.route('/logs', methods=['POST'])
+@login_required
 def create_log():
     """创建新的施工日志，并处理照片上传"""
     # 1. 处理表单数据
-    project_id = request.form['project_id']
-    date_str = request.form['date']  # 格式: YYYY-MM-DD
-    date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+    project_id = request.form.get('project_id')
+    date_str = request.form.get('date')  # 格式: YYYY-MM-DD
+    if not project_id or not date_str:
+        return jsonify({'error': 'project_id and date are required'}), 400
+    try:
+        project_id = int(project_id)
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        return jsonify({'error': 'invalid project_id or date format'}), 400
     
     log = ConstructionLog(
         project_id=project_id,
@@ -117,17 +148,15 @@ def create_log():
     if 'photos' in request.files:
         files = request.files.getlist('photos')
         for file in files:
-            if file and allowed_file(file.filename):
-                filename = secure_filename(file.filename)
-                # 为文件生成唯一名称，避免冲突
-                unique_filename = f"{log.id}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}_{filename}"
-                file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
-                file.save(file_path)
-                
+            if file:
+                unique_filename = save_uploaded_file(file, prefix=f"{log.id}_")
+                if not unique_filename:
+                    continue  # 校验失败的文件跳过
+                original = secure_filename(file.filename)
                 photo = LogPhoto(
                     log_id=log.id,
                     filename=unique_filename,
-                    original_filename=filename,
+                    original_filename=original,
                     photo_type='site'  # 默认为现场照片
                 )
                 db.session.add(photo)
@@ -138,16 +167,15 @@ def create_log():
     if 'certificates' in request.files:
         files = request.files.getlist('certificates')
         for file in files:
-            if file and allowed_file(file.filename):
-                filename = secure_filename(file.filename)
-                unique_filename = f"cert_{log.id}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}_{filename}"
-                file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
-                file.save(file_path)
-                
+            if file:
+                unique_filename = save_uploaded_file(file, prefix=f"cert_{log.id}_")
+                if not unique_filename:
+                    continue
+                original = secure_filename(file.filename)
                 cert = LogPhoto(
                     log_id=log.id,
                     filename=unique_filename,
-                    original_filename=filename,
+                    original_filename=original,
                     photo_type='certificate'
                 )
                 db.session.add(cert)
@@ -163,11 +191,13 @@ def create_log():
     }), 201
 
 @api.route('/photos/<filename>')
+@login_required
 def uploaded_file(filename):
     """提供上传的照片访问"""
     return send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)
 
 @api.route('/export/logs', methods=['GET'])
+@login_required
 def export_logs():
     """导出施工日志为PDF格式"""
     project_id = request.args.get('project_id')

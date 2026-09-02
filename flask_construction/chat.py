@@ -3,6 +3,7 @@ from werkzeug.utils import secure_filename
 from .models import db, User, Project, Message, MessageRead, ConstructionLog
 from datetime import datetime
 import os
+import imghdr
 from functools import wraps
 
 chat = Blueprint('chat', __name__)
@@ -14,20 +15,23 @@ def allowed_image(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_IMG_EXTENSIONS
 
 
+def validate_image(file_storage):
+    """校验图片：扩展名 + 真实内容类型（魔数）"""
+    if not (file_storage and file_storage.filename and allowed_image(file_storage.filename)):
+        return False
+    head = file_storage.stream.read(32)
+    file_storage.stream.seek(0)
+    return imghdr.what(None, head) is not None
+
+
 def get_current_user():
     """从 session 或 token 获取当前用户"""
     # 1) session
     if 'user_id' in session:
         return User.query.get(session['user_id'])
-    # 2) Authorization: Bearer <user_id>  (简单 token，与 auth.py 保持一致)
-    token = request.headers.get('Authorization')
-    if token and token.startswith('Bearer '):
-        try:
-            user_id = int(token[7:])
-            return User.query.get(user_id)
-        except (ValueError, TypeError):
-            return None
-    return None
+    # 2) Authorization: Bearer <token>（签名 token，与 auth.py 保持一致）
+    from .auth import get_current_user as auth_get_current_user
+    return auth_get_current_user()
 
 
 def chat_login_required(f):
@@ -100,7 +104,7 @@ def upload_image():
     if 'image' not in request.files:
         return jsonify({'error': 'image is required'}), 400
     file = request.files['image']
-    if not (file.filename and allowed_image(file.filename)):
+    if not validate_image(file):
         return jsonify({'error': 'invalid image file'}), 400
 
     filename = secure_filename(file.filename)
@@ -115,6 +119,7 @@ def upload_image():
 
 
 @chat.route('/images/<filename>')
+@chat_login_required
 def get_chat_image(filename):
     """访问聊天图片"""
     return send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)
