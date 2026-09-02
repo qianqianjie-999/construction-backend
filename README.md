@@ -1,13 +1,13 @@
 # 施工日志管理系统 · 后端
 
-工程现场施工日志管理系统的后端服务，为 Flutter Web 前端提供 API、实时聊天、照片上传、PDF 导出与后台用户管理能力。
+工程现场施工日志管理系统的后端服务，为 Flutter APP + 管理后台网页提供 API、实时聊天、照片上传、PDF 导出与用户管理能力。
 
 ## 技术栈
 
-- Python 3.8+
+- Python 3.9+（Rocky 9.6 系统版本）
 - Flask + Flask-SQLAlchemy + Flask-CORS + Flask-SocketIO
 - 数据库：MariaDB / MySQL（生产）或 SQLite（开发）
-- 实时聊天：Socket.IO（threading 模式，Web 端使用 polling 传输）
+- 实时聊天：Socket.IO + gevent（gunicorn worker），WebSocket 传输
 - PDF 导出：ReportLab
 
 ## 目录结构
@@ -89,5 +89,132 @@ python app.py
 
 ## 说明
 
-- 聊天在 Web 端使用 **polling** 传输（Werkzeug 开发服务器不支持 WebSocket），生产环境如需 WebSocket 可换用 eventlet / gevent。
+- 生产环境通过 Nginx + rust_frp 暴露，Socket.IO 使用 WebSocket 传输（gevent worker 支持）。
 - 账号由管理员在后台分配，无开放注册入口（注册接口预留）。
+
+## 生产部署架构
+
+```
+[手机 APP / 管理后台网页]
+        │
+   HTTPS:9304
+        │
+┌───────────────────────┐
+│  阿里云 ECS 123.57.86.80  │
+│  Nginx (SSL 终止)       │
+│  rust_fps (bind 9300)   │
+└─────────┬─────────────┘
+  frp TCP 隧道 (port 19304)
+          │
+┌─────────▼─────────────┐
+│  内网 Rocky 9.6         │
+│  rust_frpc             │
+│  gunicorn -k gevent    │
+│  Flask :8082           │
+│  MariaDB               │
+└───────────────────────┘
+```
+
+### Rocky 9.6 部署步骤
+
+```bash
+# 1. 克隆项目
+cd /data/sata_1T/www_project
+git clone https://github.com/qianqianjie-999/construction-backend.git
+
+# 2. 创建 venv 并装依赖
+cd construction-backend
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
+
+# 3. 配置 .env
+cat > .env << EOF
+FLASK_SECRET_KEY=随机字符串
+FLASK_CONFIG=production
+DATABASE_URL=mysql+pymysql://construction_user:construction123@localhost/construction?charset=utf8mb4
+EOF
+
+# 4. 启动 gunicorn（root 用户可避免端口权限问题）
+sudo pkill -f gunicorn; sleep 1
+FLASK_CONFIG=production venv/bin/gunicorn -c gunicorn.conf.py wsgi:app &
+```
+
+### gunicorn.conf.py
+
+```python
+worker_class = "gevent"
+workers = 1
+bind = "0.0.0.0:8082"
+```
+
+### wsgi.py 关键配置（gevent 必须最前面 patch）
+
+```python
+from gevent import monkey
+monkey.patch_all()
+
+import os
+from app import create_app
+app = create_app(os.environ.get('FLASK_CONFIG', 'production'))
+```
+
+### frps.toml（阿里云）
+
+```toml
+bindPort = 9300
+auth.method = "token"
+auth.token = "你的token"
+allowPorts = [
+  { start = 19304, end = 19304 },
+]
+```
+
+### frpc.toml（Rocky）
+
+```toml
+serverAddr = "123.57.86.80"
+serverPort = 9300
+auth.method = "token"
+auth.token = "你的token"
+
+[[proxies]]
+name = "web_app"
+type = "tcp"
+local_ip = "127.0.0.1"
+local_port = 8082
+remote_port = 19304
+```
+
+### Nginx（阿里云）
+
+```nginx
+server {
+    listen 9304 ssl;
+    server_name 123.57.86.80;
+
+    ssl_certificate     /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    # API + Socket.IO (HTTP 反代)
+    location / {
+        proxy_pass http://127.0.0.1:19304;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 86400;
+    }
+}
+```
+
+## 踩坑记录
+
+| 坑 | 根因 | 修复 |
+|---|---|---|
+| `Invalid async_mode specified` | 新版 python-socketio(>=5.16) 不支持硬编码 'gevent' | ProductionConfig 硬编码 `SOCKETIO_ASYNC_MODE=None`，app.py 里只有 async_mode 有值才传参 |
+| gevent-websocket 和 gevent 26.x 冲突 | 新版 gevent 20+ 已内置 WebSocket，旧包反而搞破坏 | **卸掉 gevent-websocket** |
+| gunicorn worker 崩了 | wsgi.py 没有在最前面 `gevent.monkey.patch_all()` | patch 必须在所有 import 之前 |
+| frpc remote_port=None | frpc.toml 写错成 `remote = 9304` 不是 `remote_port` | 改 `remote_port = 19304` |
+| frps 端口冲突 | frpc remote_port 和 Nginx 监听同端口冲突 | frps allow_ports 用 19304，frpc remote_port=19304，Nginx 反代 127.0.0.1:19304 |
+| Nginx WebSocket 不升级 | 缺 Upgrade/Connection 头 | Nginx 加 `proxy_set_header Upgrade $http_upgrade;` |
