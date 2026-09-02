@@ -26,11 +26,6 @@ from flask_construction.models import User
 # 创建 Flask app
 app = create_app()
 
-# 手动触发一次 engineio 的 async_mode 检测（确保识别 gevent）
-import engineio
-print(f'[wsgi] engineio async_mode = {engineio.async_mode}', flush=True)
-print(f'[wsgi] gevent patching done, version={gevent.__version__}', flush=True)
-
 # 确保表存在（幂等）
 with app.app_context():
     db.create_all()
