@@ -108,6 +108,14 @@
             color: #94a3b8;
         }
         .empty .icon { font-size: 48px; margin-bottom: 12px; }
+        .message-body.image img { cursor: zoom-in; transition: opacity 0.15s; }
+        .message-body.image img:hover { opacity: 0.85; }
+
+        /* 图片放大模态框 */
+        .img-modal { display: none; position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.88); align-items: center; justify-content: center; cursor: zoom-out; }
+        .img-modal.active { display: flex; }
+        .img-modal img { max-width: 92vw; max-height: 92vh; border-radius: 4px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+        .img-modal .close-hint { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.5); font-size: 13px; }
     </style>
 </head>
 <body>
@@ -147,7 +155,7 @@
                         <div class="message-body text">{{ msg.content }}</div>
                     {% elif msg.content_type == 'image' %}
                         <div class="message-body image">
-                            <img src="/api/chat/images/{{ msg.content }}" alt="图片消息">
+                            <img src="/api/chat/images/{{ msg.content }}" alt="图片消息" onclick="enlargeImage(this)">
                         </div>
                     {% elif msg.content_type == 'log_card' %}
                         <div class="message-body log-card">
@@ -171,5 +179,19 @@
         </div>
         {% endif %}
     </div>
+
+    <div class="img-modal" id="imgModal" onclick="this.classList.remove('active')">
+        <img id="imgModalImg" src="" alt="">
+        <div class="close-hint">点击任意处关闭</div>
+    </div>
+
+    <script>
+    function enlargeImage(img) {
+        var modal = document.getElementById('imgModal');
+        var modalImg = document.getElementById('imgModalImg');
+        modalImg.src = img.src;
+        modal.classList.add('active');
+    }
+    </script>
 </body>
 </html>
