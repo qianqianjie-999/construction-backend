@@ -3,6 +3,9 @@ from .models import db, Project, ConstructionLog, Message, User
 from .utils.pdf_generator import generate_pdf_for_project
 from werkzeug.security import generate_password_hash
 import os
+import io
+import zipfile
+from datetime import datetime
 
 # 创建管理后台蓝图
 admin = Blueprint('admin', __name__, template_folder='templates')
@@ -102,6 +105,72 @@ def project_chat(project_id):
     # 预加载用户信息
     users = {u.id: u for u in User.query.all()}
     return render_template('admin/chat.html', project=project, messages=messages, users=users)
+
+
+@admin.route('/admin/project/<int:project_id>/chat/images/zip')
+@admin_login_required
+def download_chat_images(project_id):
+    """一键下载项目所有聊天图片（打包 ZIP）"""
+    project = Project.query.get_or_404(project_id)
+
+    # 查出所有图片类型的消息
+    image_msgs = (
+        Message.query
+        .filter_by(project_id=project_id, content_type='image')
+        .order_by(Message.id.asc())
+        .all()
+    )
+
+    if not image_msgs:
+        flash('该项目没有聊天图片', 'warning')
+        return redirect(url_for('admin.project_chat', project_id=project_id))
+
+    upload_folder = current_app.config['UPLOAD_FOLDER']
+    buffer = io.BytesIO()
+
+    # 收集有效文件，处理重名
+    file_map = {}  # zip内文件名 -> 磁盘路径
+    missing = 0
+
+    for msg in image_msgs:
+        filename = msg.content
+        if not filename:
+            missing += 1
+            continue
+        disk_path = os.path.join(upload_folder, filename)
+        if not os.path.exists(disk_path):
+            missing += 1
+            continue
+
+        # 用 "序号_原文件名" 避免重名
+        if filename not in file_map.values():
+            # 找一个唯一的名字
+            base = filename
+            counter = 1
+            zip_name = f"{len(file_map)+1:03d}_{base}"
+            while zip_name in file_map:
+                counter += 1
+                zip_name = f"{len(file_map)+1:03d}_{counter}_{base}"
+            file_map[zip_name] = disk_path
+
+    if not file_map:
+        flash(f'图片记录 {len(image_msgs)} 条，但文件都不存在了', 'error')
+        return redirect(url_for('admin.project_chat', project_id=project_id))
+
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for zip_name, disk_path in file_map.items():
+            zf.write(disk_path, zip_name)
+
+    buffer.seek(0)
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    zip_filename = f"{project.name}_聊天图片_{ts}.zip"
+
+    return send_file(
+        buffer,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=zip_filename,
+    )
 
 @admin.route('/admin/export/<int:project_id>')
 @admin_login_required

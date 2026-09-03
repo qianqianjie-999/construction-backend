@@ -38,6 +38,24 @@
         }
         .toolbar .title { font-size: 16px; font-weight: 600; }
         .toolbar .count { font-size: 13px; color: #64748b; }
+        .toolbar .actions { display: flex; gap: 8px; align-items: center; }
+        .btn-download {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #00d4ff 0%, #0ea5e9 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            transition: opacity 0.15s, transform 0.1s;
+            border: none;
+            cursor: pointer;
+        }
+        .btn-download:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-download:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
         .messages-list {
             background: white;
             border-radius: 8px;
@@ -132,7 +150,12 @@
     <div class="container">
         <div class="toolbar">
             <div class="title">所有消息</div>
-            <div class="count">共 {{ messages|length }} 条</div>
+            <div class="actions">
+                <span class="count">共 {{ messages|length }} 条 · 图片 {{ messages|selectattr('content_type', 'equalto', 'image')|list|length }} 张</span>
+                <a href="/admin/project/{{ project.id }}/chat/images/zip" class="btn-download">
+                    📦 一键下载所有图片
+                </a>
+            </div>
         </div>
 
         {% if messages %}
