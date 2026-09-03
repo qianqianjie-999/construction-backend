@@ -77,13 +77,13 @@
 <div class="card animate-in" style="margin-bottom: 1rem; animation-delay: {{ loop.index * 0.05 }}s;">
     <div class="card-header">
         <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin: 0;">
                     {{ log.date.strftime('%Y年%m月%d日') }}
                 </h3>
+                {% if log.weather %}<span class="badge badge-primary">{{ log.weather }}</span>{% endif %}
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
-                <span class="badge badge-primary">{{ log.weather }}</span>
                 <a href="{{ url_for('admin.edit_log', log_id=log.id) }}" class="btn btn-primary" style="padding: 4px 12px; font-size: 0.8rem;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;">
                         <path d="M12 20h9"></path>
@@ -106,34 +106,86 @@
         </div>
     </div>
     <div class="card-body">
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
-            <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
-                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">施工内容</div>
-                <div style="font-size: 0.95rem; color: var(--text-primary);">{{ log.work_content or '-' }}</div>
-            </div>
-            <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
-                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">使用材料</div>
-                <div style="font-size: 0.95rem; color: var(--text-primary);">{{ log.materials or '-' }}</div>
-            </div>
-            <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
-                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">出勤人员</div>
-                <div style="font-size: 0.95rem; color: var(--text-primary);">{{ log.personnel or '-' }}</div>
-            </div>
-            <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
-                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">质量安全情况</div>
-                <div style="font-size: 0.95rem; color: var(--text-primary);">{{ log.safety_notes or '-' }}</div>
+        <!-- 天气/气温/风力/风向 -->
+        <div style="background: var(--bg-secondary); padding: 16px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 1rem;">
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; text-align: center;">
+                <div>
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px;">天气</div>
+                    <div style="font-size: 1rem; font-weight: 600; color: var(--text-primary);">{{ log.weather or '-' }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px;">气温</div>
+                    <div style="font-size: 1rem; font-weight: 600; color: var(--text-primary);">{{ log.temperature or '-' }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px;">风力</div>
+                    <div style="font-size: 1rem; font-weight: 600; color: var(--text-primary);">{{ log.wind_force or '-' }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px;">风向</div>
+                    <div style="font-size: 1rem; font-weight: 600; color: var(--text-primary);">{{ log.wind_direction or '-' }}</div>
+                </div>
             </div>
         </div>
 
+        <!-- 工程信息 -->
+        <h4 style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.5rem; border-left: 3px solid #FF9800; padding-left: 8px;">🏗️ 工程信息</h4>
+        <div style="background: var(--bg-secondary); padding: 14px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 1rem;">
+            <div style="margin-bottom: 10px;">
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 2px;">当日工程施工部位</div>
+                <div style="font-size: 0.95rem; color: var(--text-primary);">{{ log.construction_part or '-' }}</div>
+            </div>
+            <div style="margin-bottom: 10px;">
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 2px;">当日工程施工内容</div>
+                <div style="font-size: 0.95rem; color: var(--text-primary); white-space: pre-wrap;">{{ log.work_content or '-' }}</div>
+            </div>
+            <div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 2px;">当日工程形象进度</div>
+                <div style="font-size: 0.95rem; color: var(--text-primary);">{{ log.progress or '-' }}</div>
+            </div>
+        </div>
+
+        <!-- 记录详情 -->
+        <h4 style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.5rem; border-left: 3px solid #10B981; padding-left: 8px;">📝 记录详情</h4>
+        <div style="display: grid; gap: 1rem; margin-bottom: 1rem;">
+            <div style="background: var(--bg-secondary); padding: 14px; border-radius: 10px; border: 1px solid var(--border);">
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">施工情况记录</div>
+                <div style="font-size: 0.95rem; color: var(--text-primary); white-space: pre-wrap;">{{ log.personnel or '-' }}</div>
+            </div>
+            <div style="background: var(--bg-secondary); padding: 14px; border-radius: 10px; border: 1px solid var(--border);">
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">技术质量安全工作记录</div>
+                <div style="font-size: 0.95rem; color: var(--text-primary); white-space: pre-wrap;">{{ log.safety_notes or '-' }}</div>
+            </div>
+            <div style="background: var(--bg-secondary); padding: 14px; border-radius: 10px; border: 1px solid var(--border);">
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">今日材料、构配件进场、检(试)验情况</div>
+                <div style="font-size: 0.95rem; color: var(--text-primary); white-space: pre-wrap;">{{ log.materials or '-' }}</div>
+            </div>
+        </div>
+
+        <!-- 负责人 -->
+        <div style="background: var(--bg-secondary); padding: 14px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 1rem; display: flex; text-align: center;">
+            <div style="flex: 1;">
+                <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 2px;">工程负责人</div>
+                <div style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">{{ log.project_manager or '-' }}</div>
+            </div>
+            <div style="width: 1px; background: var(--border); margin: 0 1rem;"></div>
+            <div style="flex: 1;">
+                <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 2px;">记录人</div>
+                <div style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">{{ log.recorder or '-' }}</div>
+            </div>
+        </div>
+
+        <!-- 关联照片 -->
         {% if log.photos %}
-        <div style="margin-top: 1rem;">
-            <h4 style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.75rem;">关联照片 ({{ log.photos|length }})</h4>
-            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <div style="margin-top: 0.5rem;">
+            <h4 style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.75rem; border-left: 3px solid #00d4ff; padding-left: 8px;">📷 现场照片 ({{ log.photos|length }})</h4>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px;">
                 {% for photo in log.photos %}
                 <a href="{{ url_for('api.uploaded_file', filename=photo.filename) }}" target="_blank">
                     <img src="{{ url_for('api.uploaded_file', filename=photo.filename) }}"
                          alt="Photo"
-                         style="width: 120px; height: 90px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border);">
+                         style="width: 100%; height: 110px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); transition: opacity 0.15s;"
+                         onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
                 </a>
                 {% endfor %}
             </div>
