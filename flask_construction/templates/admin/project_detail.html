@@ -82,7 +82,20 @@
                     {{ log.date.strftime('%Y年%m月%d日') }}
                 </h3>
             </div>
-            <span class="badge badge-primary">{{ log.weather }}</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="badge badge-primary">{{ log.weather }}</span>
+                <form method="POST" action="{{ url_for('admin.delete_log', log_id=log.id) }}"
+                      onsubmit="return confirm('确认删除 {{ log.date.strftime("%Y年%m月%d日") }} 的日志？关联照片将一并删除，此操作不可恢复！')"
+                      style="display: inline;">
+                    <button type="submit" class="btn btn-danger" style="padding: 4px 12px; font-size: 0.8rem;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                        删除
+                    </button>
+                </form>
+            </div>
         </div>
     </div>
     <div class="card-body">

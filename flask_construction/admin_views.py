@@ -145,6 +145,27 @@ def delete_project(project_id):
     return redirect(url_for('admin.admin_dashboard'))
 
 
+@admin.route('/admin/log/<int:log_id>/delete', methods=['POST'])
+@admin_login_required
+def delete_log(log_id):
+    """删除单条施工日志（级联删除关联照片文件）"""
+    log = ConstructionLog.query.get_or_404(log_id)
+    project_id = log.project_id
+
+    # 删除磁盘上的照片文件
+    for photo in log.photos:
+        try:
+            os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], photo.filename))
+        except OSError:
+            pass
+
+    db.session.delete(log)
+    db.session.commit()
+
+    flash(f'日志（{log.date.strftime("%Y年%m月%d日")}）已删除', 'success')
+    return redirect(url_for('admin.project_detail', project_id=project_id))
+
+
 # ============ 用户管理（人工分配账号） ============
 
 @admin.route('/admin/users')

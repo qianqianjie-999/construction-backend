@@ -4,30 +4,38 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from io import BytesIO
 import os
 from flask import current_app
 
 # 注册中文字体
 def register_chinese_fonts():
-    """注册中文字体"""
+    """注册中文字体，优先用系统字体，fallback 到 reportlab 内置 CID 字体"""
+    # 1. 尝试系统字体（效果更好）
     font_paths = [
-        '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',  # 文泉驿正黑
+        '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
         '/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc',
         '/usr/share/fonts/chinese/STHeiti.ttf',
-        '/System/Library/Fonts/PingFang.ttc',  # macOS
-        'C:\\Windows\\Fonts\\simhei.ttf',  # Windows
+        '/System/Library/Fonts/PingFang.ttc',
+        'C:\\Windows\\Fonts\\simhei.ttf',
         'C:\\Windows\\Fonts\\simsun.ttc',
     ]
-
     for font_path in font_paths:
         if os.path.exists(font_path):
             try:
                 pdfmetrics.registerFont(TTFont('Chinese', font_path))
-                return True
+                return 'Chinese'
             except:
                 pass
-    return False
+
+    # 2. Fallback: reportlab 内置 CID 字体（STSong-Light，无需系统装任何字体）
+    try:
+        pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
+        return 'STSong-Light'
+    except:
+        pass
+    return None
 
 def generate_pdf_for_project(project):
     """
@@ -39,16 +47,16 @@ def generate_pdf_for_project(project):
     story = []
 
     # 注册中文字体
-    has_chinese_font = register_chinese_fonts()
+    cn_font = register_chinese_fonts() or 'Helvetica'
 
     styles = getSampleStyleSheet()
 
     # 创建中文字体样式
-    if has_chinese_font:
+    if cn_font != 'Helvetica':
         title_style = ParagraphStyle(
             'CustomTitle',
             parent=styles['Heading1'],
-            fontName='Chinese',
+            fontName=cn_font,
             fontSize=24,
             spaceAfter=25,
             alignment=1  # Center
@@ -56,7 +64,7 @@ def generate_pdf_for_project(project):
         normal_style = ParagraphStyle(
             'ChineseNormal',
             parent=styles['Normal'],
-            fontName='Chinese',
+            fontName=cn_font,
             fontSize=11,
             leading=18,
         )
@@ -85,7 +93,7 @@ def generate_pdf_for_project(project):
         date_info_table = Table(date_info_data, colWidths=[70, 140, 70, 90, 70, 100])  # 总宽度540
         date_info_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, -1), 'Chinese' if has_chinese_font else 'Helvetica'),
+            ('FONTNAME', (0, 0), (-1, -1), cn_font),
             ('FONTSIZE', (0, 0), (-1, -1), 11),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
             ('TOPPADDING', (0, 0), (-1, -1), 10),
@@ -106,7 +114,7 @@ def generate_pdf_for_project(project):
         work_info_table = Table(work_info_data, colWidths=[180, 180, 180])  # 总宽度540
         work_info_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, -1), 'Chinese' if has_chinese_font else 'Helvetica'),
+            ('FONTNAME', (0, 0), (-1, -1), cn_font),
             ('FONTSIZE', (0, 0), (-1, -1), 11),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
             ('TOPPADDING', (0, 0), (-1, -1), 10),
@@ -130,7 +138,7 @@ def generate_pdf_for_project(project):
         construction_record_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, 0), 'LEFT'),
             ('ALIGN', (0, 1), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, -1), 'Chinese' if has_chinese_font else 'Helvetica'),
+            ('FONTNAME', (0, 0), (-1, -1), cn_font),
             ('FONTSIZE', (0, 0), (-1, -1), 11),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
             ('TOPPADDING', (0, 0), (-1, -1), 8),
@@ -155,7 +163,7 @@ def generate_pdf_for_project(project):
         tech_safety_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, 0), 'LEFT'),
             ('ALIGN', (0, 1), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, -1), 'Chinese' if has_chinese_font else 'Helvetica'),
+            ('FONTNAME', (0, 0), (-1, -1), cn_font),
             ('FONTSIZE', (0, 0), (-1, -1), 11),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
             ('TOPPADDING', (0, 0), (-1, -1), 8),
@@ -180,7 +188,7 @@ def generate_pdf_for_project(project):
         material_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, 0), 'LEFT'),
             ('ALIGN', (0, 1), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, -1), 'Chinese' if has_chinese_font else 'Helvetica'),
+            ('FONTNAME', (0, 0), (-1, -1), cn_font),
             ('FONTSIZE', (0, 0), (-1, -1), 11),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
             ('TOPPADDING', (0, 0), (-1, -1), 8),
@@ -200,7 +208,7 @@ def generate_pdf_for_project(project):
         sign_table = Table(sign_data, colWidths=[100, 170, 100, 170])  # 总宽度540
         sign_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, -1), 'Chinese' if has_chinese_font else 'Helvetica'),
+            ('FONTNAME', (0, 0), (-1, -1), cn_font),
             ('FONTSIZE', (0, 0), (-1, -1), 11),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
             ('TOPPADDING', (0, 0), (-1, -1), 12),
@@ -217,7 +225,7 @@ def generate_pdf_for_project(project):
             story.append(Spacer(1, 15))
             story.append(Paragraph('<< 下一页 >>', ParagraphStyle(
                 'PageBreak',
-                fontName='Chinese' if has_chinese_font else 'Helvetica',
+                fontName=cn_font,
                 fontSize=10,
                 alignment=1
             )))
