@@ -1,0 +1,119 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="page-header animate-in">
+    <h1 class="page-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 20h9"></path>
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+        </svg>
+        编辑施工日志
+    </h1>
+    <div style="display: flex; gap: 12px;">
+        <a href="{{ url_for('admin.project_detail', project_id=project.id) }}" class="btn btn-secondary">
+            ← 返回项目
+        </a>
+    </div>
+</div>
+
+<form method="POST" action="{{ url_for('admin.edit_log', log_id=log.id) }}">
+<div class="card animate-in" style="margin-bottom: 1.5rem;">
+    <div class="card-header">📅 日期与天气</div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div>
+                <label class="form-label">日期</label>
+                <input type="date" name="date" value="{{ log.date.strftime('%Y-%m-%d') }}" class="form-control" required>
+            </div>
+            <div>
+                <label class="form-label">天气</label>
+                <select name="weather" class="form-control">
+                    {% for w in ['晴','多云','阴','小雨','中雨','大雨','雪','雷阵雨','雾'] %}
+                    <option value="{{ w }}" {% if log.weather == w %}selected{% endif %}>{{ w }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="form-label">气温</label>
+                <input type="text" name="temperature" value="{{ log.temperature or '' }}" class="form-control" placeholder="例如：35°C">
+            </div>
+            <div>
+                <label class="form-label">风力</label>
+                <input type="text" name="wind_force" value="{{ log.wind_force or '' }}" class="form-control" placeholder="例如：3级">
+            </div>
+            <div>
+                <label class="form-label">风向</label>
+                <input type="text" name="wind_direction" value="{{ log.wind_direction or '' }}" class="form-control" placeholder="例如：东风">
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card animate-in" style="margin-bottom: 1.5rem;">
+    <div class="card-header">🏗️ 工程信息</div>
+    <div class="card-body">
+        <div style="margin-bottom: 1rem;">
+            <label class="form-label">当日工程施工部位</label>
+            <input type="text" name="construction_part" value="{{ log.construction_part or '' }}" class="form-control" placeholder="例如：路口名称">
+        </div>
+        <div style="margin-bottom: 1rem;">
+            <label class="form-label">当日工程施工内容</label>
+            <textarea name="construction_content" rows="3" class="form-control" placeholder="比如：勘察现场、基础施工、设备安装等">{{ log.work_content or '' }}</textarea>
+        </div>
+        <div>
+            <label class="form-label">当日工程形象进度</label>
+            <input type="text" name="progress" value="{{ log.progress or '' }}" class="form-control" placeholder="例如：完成70%">
+        </div>
+    </div>
+</div>
+
+<div class="card animate-in" style="margin-bottom: 1.5rem;">
+    <div class="card-header">📝 施工情况记录</div>
+    <div class="card-body">
+        <textarea name="construction_record" rows="4" class="form-control" placeholder="部位项目、机械作业、班组工作、施工存在问题等">{{ log.personnel or '' }}</textarea>
+    </div>
+</div>
+
+<div class="card animate-in" style="margin-bottom: 1.5rem;">
+    <div class="card-header">🛡️ 技术质量安全工作记录</div>
+    <div class="card-body">
+        <textarea name="technical_safety_record" rows="4" class="form-control" placeholder="技术质量安全活动、技术质量安全问题、检查评定验收等">{{ log.safety_notes or '' }}</textarea>
+    </div>
+</div>
+
+<div class="card animate-in" style="margin-bottom: 1.5rem;">
+    <div class="card-header">📦 材料进场记录</div>
+    <div class="card-body">
+        <textarea name="material_record" rows="3" class="form-control" placeholder="详细记录材料进场情况">{{ log.materials or '' }}</textarea>
+    </div>
+</div>
+
+<div class="card animate-in" style="margin-bottom: 1.5rem;">
+    <div class="card-header">👥 负责人信息</div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div>
+                <label class="form-label">工程负责人</label>
+                <input type="text" name="project_manager" value="{{ log.project_manager or '' }}" class="form-control">
+            </div>
+            <div>
+                <label class="form-label">记录人</label>
+                <input type="text" name="recorder" value="{{ log.recorder or '' }}" class="form-control">
+            </div>
+        </div>
+    </div>
+</div>
+
+<div style="display: flex; gap: 12px; margin-bottom: 2rem;">
+    <button type="submit" class="btn btn-primary" style="padding: 12px 24px; font-size: 15px;">💾 保存修改</button>
+    <a href="{{ url_for('admin.project_detail', project_id=project.id) }}" class="btn btn-secondary" style="padding: 12px 24px; font-size: 15px;">取消</a>
+</div>
+</form>
+
+<style>
+.form-label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-secondary, #64748b); margin-bottom: 6px; }
+.form-control { width: 100%; padding: 10px 14px; border: 1px solid var(--border, #e2e8f0); border-radius: 8px; font-size: 14px; box-sizing: border-box; background: var(--bg, #fff); color: var(--text, #1a2332); transition: border-color 0.15s, box-shadow 0.15s; }
+.form-control:focus { outline: none; border-color: var(--primary, #00d4ff); box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.15); }
+textarea.form-control { resize: vertical; min-height: 60px; }
+</style>
+{% endblock %}

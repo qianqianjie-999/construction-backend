@@ -235,6 +235,41 @@ def delete_log(log_id):
     return redirect(url_for('admin.project_detail', project_id=project_id))
 
 
+@admin.route('/admin/log/<int:log_id>/edit', methods=['GET', 'POST'])
+@admin_login_required
+def edit_log(log_id):
+    """编辑施工日志"""
+    log = ConstructionLog.query.get_or_404(log_id)
+    project = Project.query.get_or_404(log.project_id)
+
+    if request.method == 'POST':
+        try:
+            date_str = request.form.get('date', '')
+            if date_str:
+                log.date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            log.weather = request.form.get('weather', '')
+            log.temperature = request.form.get('temperature', '')
+            log.wind_force = request.form.get('wind_force', '')
+            log.wind_direction = request.form.get('wind_direction', '')
+            log.construction_part = request.form.get('construction_part', '')
+            log.work_content = request.form.get('construction_content', '')
+            log.progress = request.form.get('progress', '')
+            log.personnel = request.form.get('construction_record', '')
+            log.safety_notes = request.form.get('technical_safety_record', '')
+            log.materials = request.form.get('material_record', '')
+            log.project_manager = request.form.get('project_manager', '')
+            log.recorder = request.form.get('recorder', '')
+
+            db.session.commit()
+            flash(f'日志（{log.date.strftime("%Y年%m月%d日")}）已更新', 'success')
+            return redirect(url_for('admin.project_detail', project_id=project.id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'保存失败：{e}', 'error')
+
+    return render_template('admin/log_edit.html', log=log, project=project)
+
+
 # ============ 用户管理（人工分配账号） ============
 
 @admin.route('/admin/users')

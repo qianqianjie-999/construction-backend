@@ -224,6 +224,38 @@ def create_log():
         'message': 'Log and photos uploaded successfully'
     }), 201
 
+
+@api.route('/logs/<int:log_id>', methods=['PUT'])
+@login_required
+def update_log(log_id):
+    """更新施工日志的文字字段（照片不在此接口处理）"""
+    log = ConstructionLog.query.get_or_404(log_id)
+
+    # 日期
+    date_str = request.form.get('date')
+    if date_str:
+        try:
+            log.date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'error': 'invalid date format'}), 400
+
+    log.weather = request.form.get('weather', log.weather)
+    log.temperature = request.form.get('temperature', log.temperature)
+    log.wind_force = request.form.get('wind_force', log.wind_force)
+    log.wind_direction = request.form.get('wind_direction', log.wind_direction)
+    log.construction_part = request.form.get('construction_part', log.construction_part)
+    log.work_content = request.form.get('construction_content', log.work_content)
+    log.progress = request.form.get('progress', log.progress)
+    log.personnel = request.form.get('construction_record', log.personnel)
+    log.safety_notes = request.form.get('technical_safety_record', log.safety_notes)
+    log.materials = request.form.get('material_record', log.materials)
+    log.project_manager = request.form.get('project_manager', log.project_manager)
+    log.recorder = request.form.get('recorder', log.recorder)
+
+    db.session.commit()
+    return jsonify({'message': 'Log updated successfully', 'log_id': log.id})
+
+
 @api.route('/photos/<filename>')
 def uploaded_file(filename):
     """提供上传的照片访问（公开访问，浏览器 img 标签不需要 token）"""
