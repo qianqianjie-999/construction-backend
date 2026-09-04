@@ -134,6 +134,27 @@
         .img-modal.active { display: flex; }
         .img-modal img { max-width: 92vw; max-height: 92vh; border-radius: 4px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
         .img-modal .close-hint { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.5); font-size: 13px; }
+
+        /* 文件消息卡片 */
+        .message-body.file { display: flex; align-items: center; gap: 10px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px 14px; min-width: 240px; max-width: 420px; }
+        .file-icon { width: 38px; height: 38px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: white; flex-shrink: 0; }
+        .file-info { flex: 1; min-width: 0; }
+        .file-name { font-size: 13px; font-weight: 600; color: #1a2332; word-break: break-all; }
+        .file-meta { font-size: 12px; color: #64748b; }
+        .file-download { color: #0ea5e9; text-decoration: none; }
+        .file-download:hover { text-decoration: underline; }
+
+        /* 发送栏 */
+        .send-bar { display: flex; gap: 8px; align-items: center; background: white; padding: 12px 16px; border-radius: 8px; margin-top: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .send-bar input[type=text] { flex: 1; min-width: 0; padding: 10px 14px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 14px; outline: none; }
+        .send-bar input[type=text]:focus { border-color: #00d4ff; }
+        .send-btn { padding: 10px 18px; background: linear-gradient(135deg, #00d4ff 0%, #0ea5e9 100%); color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
+        .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .attach-btn { padding: 10px 14px; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; cursor: pointer; color: #1a2332; flex-shrink: 0; }
+        .attach-btn:hover { background: #e2e8f0; }
+        .attach-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .send-status { font-size: 12px; color: #64748b; white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+        .send-status.error { color: #ef4444; }
     </style>
 </head>
 <body>
@@ -180,6 +201,8 @@
                         <div class="message-body image">
                             <img src="/api/chat/images/{{ msg.content }}" alt="图片消息" onclick="enlargeImage(this)">
                         </div>
+                    {% elif msg.content_type == 'file' %}
+                        <div class="message-body file" data-file="{{ msg.content }}"></div>
                     {% elif msg.content_type == 'log_card' %}
                         <div class="message-body log-card">
                             <div class="label">📋 施工日志卡片</div>
@@ -201,6 +224,15 @@
             </div>
         </div>
         {% endif %}
+
+        <div class="send-bar">
+            <input type="file" id="fileInput" hidden
+                   accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.dwg,.dxf,.txt,.csv,.md,.zip,.rar,.7z">
+            <button class="attach-btn" id="attachBtn" type="button">📎 发送文件</button>
+            <input type="text" id="msgInput" placeholder="输入消息，回车发送（word/excel/ppt/pdf/dwg 可走附件上传）" autocomplete="off">
+            <span class="send-status" id="sendStatus"></span>
+            <button class="send-btn" id="sendBtn" disabled>发送</button>
+        </div>
     </div>
 
     <div class="img-modal" id="imgModal" onclick="this.classList.remove('active')">
@@ -208,6 +240,7 @@
         <div class="close-hint">点击任意处关闭</div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
     <script>
     function enlargeImage(img) {
         var modal = document.getElementById('imgModal');
@@ -215,6 +248,157 @@
         modalImg.src = img.src;
         modal.classList.add('active');
     }
+
+    /* ============ 发送窗口（文本 + 文件） ============ */
+    var PROJECT_ID = {{ project.id }};
+    var socket = io({ withCredentials: true });
+    var sendBtn = document.getElementById('sendBtn');
+    var msgInput = document.getElementById('msgInput');
+    var attachBtn = document.getElementById('attachBtn');
+    var fileInput = document.getElementById('fileInput');
+    var sendStatus = document.getElementById('sendStatus');
+
+    function setStatus(txt, isError) {
+        sendStatus.textContent = txt || '';
+        sendStatus.className = 'send-status' + (isError ? ' error' : '');
+    }
+
+    function setConnected(ok) {
+        sendBtn.disabled = !ok;
+        if (!ok) setStatus('连接中...');
+    }
+
+    socket.on('connect', function () {
+        setConnected(true);
+        socket.emit('join_project', { project_id: PROJECT_ID });
+    });
+    socket.on('disconnect', function () { setConnected(false); });
+    socket.on('receive_message', function (msg) {
+        if (String(msg.project_id) !== String(PROJECT_ID)) return;
+        appendMessage(msg);
+    });
+
+    function fileStyle(ext) {
+        if (ext === 'doc' || ext === 'docx') return { color: '#2b579a', label: 'W' };
+        if (ext === 'xls' || ext === 'xlsx' || ext === 'csv') return { color: '#217346', label: 'X' };
+        if (ext === 'ppt' || ext === 'pptx') return { color: '#d24726', label: 'P' };
+        if (ext === 'pdf') return { color: '#d93025', label: 'PDF' };
+        if (ext === 'dwg' || ext === 'dxf') return { color: '#0e7490', label: 'CAD' };
+        if (ext === 'zip' || ext === 'rar' || ext === '7z') return { color: '#64748b', label: 'ZIP' };
+        if (ext === 'txt' || ext === 'md') return { color: '#0f766e', label: 'TXT' };
+        return { color: '#0ea5e9', label: 'F' };
+    }
+
+    function formatSize(n) {
+        if (!n || n < 0) return '0 B';
+        if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+        if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
+        return n + ' B';
+    }
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    function fileCardHTML(meta) {
+        if (!meta) meta = {};
+        var name = meta.name || meta.path || '文件';
+        var path = meta.path || '';
+        var ext = (name.split('.').pop() || '').toLowerCase();
+        var st = fileStyle(ext);
+        var url = '/api/chat/files/' + encodeURIComponent(path) + '?name=' + encodeURIComponent(name);
+        return '<div class="file-icon" style="background:' + st.color + '">' + st.label + '</div>' +
+            '<div class="file-info">' +
+            '<div class="file-name">' + escapeHtml(name) + '</div>' +
+            '<div class="file-meta">' + (ext ? ext.toUpperCase() : 'FILE') + ' · ' + formatSize(meta.size) +
+            ' · <a class="file-download" href="' + url + '">下载</a></div></div>';
+    }
+
+    // 渲染历史消息里的文件卡片（content 是 JSON 字符串，模板层已做 HTML 转义）
+    document.querySelectorAll('.message-body.file[data-file]').forEach(function (el) {
+        try {
+            el.innerHTML = fileCardHTML(JSON.parse(el.dataset.file));
+        } catch (e) {
+            el.innerHTML = '<div class="file-info"><div class="file-name">[文件消息解析失败]</div></div>';
+        }
+    });
+
+    function appendMessage(msg) {
+        var list = document.querySelector('.messages-list');
+        if (!list) return;
+        var empty = list.querySelector('.empty');
+        if (empty) { list.innerHTML = ''; list = document.querySelector('.messages-list'); }
+        var nick = msg.nickname || msg.username || '未知用户';
+        var body = '';
+        if (msg.content_type === 'image') {
+            body = '<div class="message-body image"><img src="/api/chat/images/' +
+                encodeURIComponent(msg.content || '') + '" alt="图片消息" onclick="enlargeImage(this)"></div>';
+        } else if (msg.content_type === 'file') {
+            var meta = {};
+            try { meta = JSON.parse(msg.content || '{}'); } catch (e) {}
+            body = '<div class="message-body file">' + fileCardHTML(meta) + '</div>';
+        } else if (msg.content_type === 'log_card') {
+            body = '<div class="message-body log-card"><div class="label">📋 施工日志卡片</div>' +
+                '<div class="meta">日志 ID: ' + escapeHtml(msg.log_id) + '</div></div>';
+        } else {
+            body = '<div class="message-body text">' + escapeHtml(msg.content) + '</div>';
+        }
+        var item = document.createElement('div');
+        item.className = 'message-item';
+        item.innerHTML = '<div class="avatar">' + escapeHtml(nick.slice(0, 1)) + '</div>' +
+            '<div class="message-content">' +
+            '<div class="message-header">' +
+            '<span class="nickname">' + escapeHtml(nick) + '</span>' +
+            '<span class="username">@' + escapeHtml(msg.username) + '</span>' +
+            '<span class="time">' + escapeHtml(String(msg.created_at || '').slice(11, 16)) + '</span>' +
+            '</div>' + body + '</div>';
+        list.appendChild(item);
+        item.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+
+    function sendText() {
+        var text = msgInput.value.trim();
+        if (!text || !socket.connected) return;
+        socket.emit('send_message', { project_id: PROJECT_ID, content_type: 'text', content: text });
+        msgInput.value = '';
+    }
+
+    sendBtn.addEventListener('click', sendText);
+    msgInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') sendText();
+    });
+
+    attachBtn.addEventListener('click', function () { fileInput.click(); });
+    fileInput.addEventListener('change', function () {
+        var f = fileInput.files && fileInput.files[0];
+        fileInput.value = '';
+        if (!f) return;
+        if (f.size > 100 * 1024 * 1024) { setStatus('文件超过 100MB，请压缩后重试', true); return; }
+        if (!socket.connected) { setStatus('未连接服务器', true); return; }
+        setStatus('上传中：' + f.name + ' ...');
+        attachBtn.disabled = true;
+        var fd = new FormData();
+        fd.append('file', f);
+        fetch('/api/chat/upload_file', { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(function (resp) { return resp.json().then(function (data) {
+                if (!resp.ok) { var err = new Error(data.error || '上传失败'); err.status = resp.status; throw err; }
+                return data;
+            }); })
+            .then(function (data) {
+                socket.emit('send_message', {
+                    project_id: PROJECT_ID,
+                    content_type: 'file',
+                    content: JSON.stringify({ name: data.name, path: data.filename, size: data.size })
+                });
+                setStatus('');
+            })
+            .catch(function (err) {
+                setStatus('上传失败：' + (err.status === 413 ? '文件过大' : err.message), true);
+            })
+            .finally(function () { attachBtn.disabled = false; });
+    });
     </script>
 </body>
 </html>

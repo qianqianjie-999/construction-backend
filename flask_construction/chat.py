@@ -9,6 +9,17 @@ chat = Blueprint('chat', __name__)
 
 ALLOWED_IMG_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
+# 文件类消息扩展名白名单（word/excel/ppt/pdf/dwg 等）
+ALLOWED_FILE_EXTENSIONS = {
+    'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf',
+    'dwg', 'dxf',
+    'txt', 'csv', 'md',
+    'zip', 'rar', '7z',
+}
+
+# 聊天文件大小上限（字节），默认 100MB；请求总体积仍受 MAX_CONTENT_LENGTH 约束
+MAX_CHAT_FILE_SIZE = int(os.environ.get('MAX_CHAT_FILE_SIZE') or 100 * 1024 * 1024)
+
 # 图片魔数签名（文件头字节）
 IMAGE_SIGNATURES = {
     b'\xff\xd8\xff': 'jpg',
@@ -21,6 +32,14 @@ IMAGE_SIGNATURES = {
 
 def allowed_image(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_IMG_EXTENSIONS
+
+
+def allowed_file_ext(filename):
+    """判断是否在文件类消息白名单内，返回小写扩展名（不在白名单返回 None）"""
+    if '.' not in filename:
+        return None
+    ext = filename.rsplit('.', 1)[1].lower()
+    return ext if ext in ALLOWED_FILE_EXTENSIONS else None
 
 
 def sniff_image_type(head):
@@ -142,6 +161,53 @@ def get_chat_image(filename):
     return send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)
 
 
+@chat.route('/upload_file', methods=['POST'])
+@chat_login_required
+def upload_file():
+    """上传聊天文件（word/excel/ppt/pdf/dwg 等），返回元信息 JSON，前端通过 socket 推送 file 消息"""
+    if 'file' not in request.files:
+        return jsonify({'error': 'file is required'}), 400
+    f = request.files['file']
+    if not (f and f.filename):
+        return jsonify({'error': 'file is required'}), 400
+
+    ext = allowed_file_ext(f.filename)
+    if not ext:
+        return jsonify({'error': f'unsupported file type: .{f.filename.rsplit(".", 1)[-1].lower()}'}), 400
+
+    # 原始文件名只保留文件名部分（不带路径），保存名不含原名，避免中文/特殊字符问题
+    orig_name = os.path.basename(f.filename.replace('\\', '/'))
+    data = f.read()
+    if not data:
+        return jsonify({'error': 'empty file'}), 400
+    if len(data) > MAX_CHAT_FILE_SIZE:
+        return jsonify({'error': f'file too large (max {MAX_CHAT_FILE_SIZE // (1024 * 1024)}MB)'}), 413
+
+    unique_filename = f"file_{datetime.now().strftime('%Y%m%d%H%M%S%f')}.{ext}"
+    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
+    with open(file_path, 'wb') as out:
+        out.write(data)
+
+    return jsonify({
+        'filename': unique_filename,
+        'name': orig_name,       # 原始文件名（用于展示和下载命名）
+        'size': len(data),       # 字节数
+        'url': f'/api/chat/files/{unique_filename}',
+    }), 201
+
+
+@chat.route('/files/<path:filename>')
+def get_chat_file(filename):
+    """下载聊天文件（公开访问，与图片一致）；?name= 可指定浏览器保存文件名"""
+    download_name = request.args.get('name')
+    return send_from_directory(
+        current_app.config['UPLOAD_FOLDER'],
+        filename,
+        as_attachment=True,
+        download_name=download_name or filename,
+    )
+
+
 @chat.route('/logs/<int:log_id>/card', methods=['GET'])
 @chat_login_required
 def get_log_card(log_id):
@@ -226,6 +292,10 @@ def register_socketio(socketio):
             return
         if content_type == 'image' and not content:
             emit('error', {'message': 'image filename required'})
+            return
+        if content_type == 'file' and not content:
+            # content 为 JSON 字符串：{"name": 原始文件名, "path": 服务器文件名, "size": 字节数}
+            emit('error', {'message': 'file meta required'})
             return
         if content_type == 'log_card' and not log_id:
             emit('error', {'message': 'log_id required'})

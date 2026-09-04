@@ -100,8 +100,8 @@ class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
-    content_type = db.Column(db.String(20), default='text')  # 'text', 'image', 'log_card'
-    content = db.Column(db.Text)                              # 文本内容或图片文件名
+    content_type = db.Column(db.String(20), default='text')  # 'text', 'image', 'file', 'log_card'
+    content = db.Column(db.Text)                              # 文本内容 / 图片文件名 / 文件元信息 JSON / ...
     log_id = db.Column(db.Integer, db.ForeignKey('construction_logs.id'))  # 转发日志卡片时引用
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     

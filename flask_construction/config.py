@@ -18,8 +18,8 @@ class Config:
 
     # 上传配置
     UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER') or 'uploads'
-    # 单文件大小上限（字节），默认 20MB
-    MAX_CONTENT_LENGTH = int(os.environ.get('MAX_CONTENT_LENGTH') or 20 * 1024 * 1024)
+    # 请求总体积上限（字节），默认 100MB（聊天文件支持到 100MB，需同步调大 Nginx client_max_body_size）
+    MAX_CONTENT_LENGTH = int(os.environ.get('MAX_CONTENT_LENGTH') or 100 * 1024 * 1024)
 
     # 服务器配置
     HOST = os.environ.get('HOST') or '0.0.0.0'
