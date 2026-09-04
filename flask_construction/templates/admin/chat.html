@@ -155,6 +155,32 @@
         .attach-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .send-status { font-size: 12px; color: #64748b; white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
         .send-status.error { color: #ef4444; }
+
+        /* 消息搜索框 */
+        .toolbar { flex-wrap: wrap; gap: 10px; }
+        .search-wrap { position: relative; flex: 1 1 220px; max-width: 360px; }
+        .search-wrap input {
+            width: 100%; padding: 8px 32px 8px 34px;
+            border: 1px solid #e2e8f0; border-radius: 6px;
+            font-size: 13px; outline: none; background: #f8fafc; color: #1a2332;
+            transition: border-color 0.15s;
+        }
+        .search-wrap input:focus { border-color: #00d4ff; background: white; }
+        .search-wrap::before {
+            content: '\1F50D'; position: absolute; left: 9px; top: 50%;
+            transform: translateY(-50%); font-size: 13px; opacity: 0.65; pointer-events: none;
+        }
+        .search-clear {
+            position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+            border: none; background: transparent; color: #94a3b8; cursor: pointer;
+            font-size: 14px; padding: 4px 7px; border-radius: 50%; display: none; line-height: 1;
+        }
+        .search-clear:hover { background: #e2e8f0; color: #475569; }
+        .search-clear.visible { display: block; }
+        mark { background: #fde047; color: #713f12; padding: 0 1px; border-radius: 2px; }
+        .search-result-bar { display: none; font-size: 13px; color: #0e7490; background: #ecfeff; padding: 8px 20px; border-bottom: 1px solid #cffafe; }
+        .search-result-bar.show { display: block; }
+        .message-item.search-hidden { display: none; }
     </style>
 </head>
 <body>
@@ -171,13 +197,18 @@
     <div class="container">
         <div class="toolbar">
             <div class="title">所有消息</div>
+            <div class="search-wrap">
+                <input type="text" id="searchInput" placeholder="搜索消息 / 文件名 / 发送人…" autocomplete="off">
+                <button class="search-clear" id="searchClear" type="button" title="清空搜索">✕</button>
+            </div>
             <div class="actions">
-                <span class="count">共 {{ messages|length }} 条 · 图片 {{ messages|selectattr('content_type', 'equalto', 'image')|list|length }} 张</span>
+                <span class="count" id="msgCount">共 {{ messages|length }} 条 · 图片 {{ messages|selectattr('content_type', 'equalto', 'image')|list|length }} 张</span>
                 <a href="/admin/project/{{ project.id }}/chat/images/zip" class="btn-download">
                     📦 一键下载所有图片
                 </a>
             </div>
         </div>
+        <div class="search-result-bar" id="searchResultBar"></div>
 
         {% if messages %}
         <div class="messages-list">
@@ -325,6 +356,95 @@
         }
     });
 
+    /* ============ 消息搜索（本地即时过滤 + 关键词高亮） ============ */
+    var searchInput = document.getElementById('searchInput');
+    var searchClear = document.getElementById('searchClear');
+    var msgCountEl = document.getElementById('msgCount');
+    var searchBar = document.getElementById('searchResultBar');
+    var BASE_COUNT = msgCountEl ? msgCountEl.textContent : '';
+
+    // 收集一条消息的可搜文本：发送人昵称/用户名 + 文本内容 + 文件名 + 日志卡片
+    function searchableText(item) {
+        var parts = [];
+        ['nickname', 'username'].forEach(function (cls) {
+            var el = item.querySelector('.' + cls);
+            if (el) parts.push(el.textContent);
+        });
+        var tb = item.querySelector('.message-body.text');
+        if (tb) parts.push(tb.textContent);
+        var fn = item.querySelector('.file-name');
+        if (fn) parts.push(fn.textContent);
+        var lc = item.querySelector('.message-body.log-card .meta');
+        if (lc) parts.push(lc.textContent);
+        return parts.join(' ');
+    }
+
+    // 对纯文本元素做关键词高亮：始终基于原始 textContent 重建，可反复调用
+    function applyHighlight(el, q) {
+        if (!el) return;
+        var raw = el.dataset.raw != null ? el.dataset.raw : el.textContent;
+        el.dataset.raw = raw;
+        if (!q) { el.innerHTML = escapeHtml(raw); return; }
+        var lower = raw.toLowerCase();
+        var lq = q.toLowerCase();
+        var out = '';
+        var i = 0;
+        while (i < raw.length) {
+            var idx = lower.indexOf(lq, i);
+            if (idx < 0) { out += escapeHtml(raw.slice(i)); break; }
+            out += escapeHtml(raw.slice(i, idx)) +
+                '<mark>' + escapeHtml(raw.slice(idx, idx + q.length)) + '</mark>';
+            i = idx + q.length;
+        }
+        el.innerHTML = out;
+    }
+
+    function resetHighlights() {
+        document.querySelectorAll('[data-raw]').forEach(function (el) {
+            el.innerHTML = escapeHtml(el.dataset.raw);
+            delete el.dataset.raw;
+        });
+    }
+
+    function applySearch() {
+        var q = searchInput.value.trim();
+        searchClear.classList.toggle('visible', !!q);
+        var items = document.querySelectorAll('.message-item');
+        var shown = 0;
+        if (!q) {
+            resetHighlights();
+            items.forEach(function (item) { item.classList.remove('search-hidden'); });
+            shown = items.length;
+            if (msgCountEl) msgCountEl.textContent = BASE_COUNT;
+            if (searchBar) { searchBar.classList.remove('show'); searchBar.textContent = ''; }
+            return;
+        }
+        var lq = q.toLowerCase();
+        items.forEach(function (item) {
+            var hit = searchableText(item).toLowerCase().indexOf(lq) >= 0;
+            item.classList.toggle('search-hidden', !hit);
+            if (hit) {
+                shown++;
+                applyHighlight(item.querySelector('.message-body.text'), q);
+                applyHighlight(item.querySelector('.file-name'), q);
+            }
+        });
+        if (msgCountEl) msgCountEl.textContent = '命中 ' + shown + ' / ' + items.length + ' 条';
+        if (searchBar) {
+            searchBar.classList.add('show');
+            searchBar.textContent = shown > 0
+                ? '🔍 找到 ' + shown + ' 条与「' + searchInput.value.trim() + '」相关的消息（关键词已高亮）'
+                : '😕 没有找到与「' + searchInput.value.trim() + '」相关的消息';
+        }
+    }
+
+    searchInput.addEventListener('input', applySearch);
+    searchClear.addEventListener('click', function () {
+        searchInput.value = '';
+        searchInput.focus();
+        applySearch();
+    });
+
     function appendMessage(msg) {
         var list = document.querySelector('.messages-list');
         if (!list) return;
@@ -356,6 +476,7 @@
             '</div>' + body + '</div>';
         list.appendChild(item);
         item.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        if (searchInput && searchInput.value.trim()) applySearch(); // 搜索中：新消息同样套用过滤
     }
 
     function sendText() {

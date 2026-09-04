@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify, session, current_app, send_from_directory
+from sqlalchemy import or_
 from werkzeug.utils import secure_filename
 from .models import db, User, Project, Message, MessageRead, ConstructionLog
 from datetime import datetime
@@ -85,13 +86,30 @@ def chat_login_required(f):
 @chat.route('/messages', methods=['GET'])
 @chat_login_required
 def get_messages():
-    """获取项目群历史消息，支持分页"""
+    """获取项目群历史消息，支持分页；around_id 表示以该消息为中心返回上下文窗口"""
     project_id = request.args.get('project_id', type=int)
     if not project_id:
         return jsonify({'error': 'project_id is required'}), 400
 
+    around_id = request.args.get('around_id', type=int)
     before_id = request.args.get('before_id', type=int)
     limit = min(request.args.get('limit', default=30, type=int), 100)
+    user_id = request.current_user.id
+
+    if around_id:
+        # 上下文窗口：以目标消息为中心，向前 half 条 + 本身 + 向后 half 条，时间升序
+        anchor = Message.query.filter_by(project_id=project_id, id=around_id).first()
+        if anchor is None:
+            return jsonify({'error': 'message not found'}), 404
+        half = max(limit // 2, 1)
+        older = (Message.query.filter_by(project_id=project_id)
+                 .filter(Message.id < around_id)
+                 .order_by(Message.id.desc()).limit(half).all())
+        newer = (Message.query.filter_by(project_id=project_id)
+                 .filter(Message.id > around_id)
+                 .order_by(Message.id.asc()).limit(half).all())
+        msgs = list(reversed(older)) + [anchor] + list(newer)
+        return jsonify([m.to_dict(current_user_id=user_id) for m in msgs])
 
     q = Message.query.filter_by(project_id=project_id)
     if before_id:
@@ -100,8 +118,36 @@ def get_messages():
     msgs = q.all()
     msgs.reverse()
 
-    user_id = request.current_user.id
     return jsonify([m.to_dict(current_user_id=user_id) for m in msgs])
+
+
+@chat.route('/search', methods=['GET'])
+@chat_login_required
+def search_messages():
+    """搜索项目聊天记录：匹配消息内容（文本/文件元信息 JSON）与发送人昵称/用户名，最新在前"""
+    project_id = request.args.get('project_id', type=int)
+    keyword = (request.args.get('q') or '').strip()
+    if not project_id:
+        return jsonify({'error': 'project_id is required'}), 400
+    if not keyword:
+        return jsonify({'error': 'q is required'}), 400
+
+    limit = min(request.args.get('limit', default=50, type=int), 100)
+    conds = [
+        Message.content.contains(keyword, autoescape=True),
+        User.nickname.contains(keyword, autoescape=True),
+        User.username.contains(keyword, autoescape=True),
+    ]
+    query = (Message.query.join(User, Message.user_id == User.id)
+             .filter(Message.project_id == project_id, or_(*conds)))
+    total = query.count()
+    msgs = query.order_by(Message.id.desc()).limit(limit).all()
+
+    user_id = request.current_user.id
+    return jsonify({
+        'total': total,
+        'items': [m.to_dict(current_user_id=user_id) for m in msgs],
+    })
 
 
 @chat.route('/messages/<int:message_id>/read', methods=['POST'])
