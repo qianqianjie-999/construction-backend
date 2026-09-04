@@ -276,6 +276,8 @@
 
     <!-- socket.io 客户端已本地化（static/socket.io.min.js），不依赖国外 CDN -->
     <script src="/static/socket.io.min.js"></script>
+    <!-- 前端图片压缩已本地化：网页端超 2MB 大图先压再传，不再需要跳 APP -->
+    <script src="/static/browser-image-compression.min.js"></script>
     <script>
     function enlargeImage(img) {
         var modal = document.getElementById('imgModal');
@@ -578,7 +580,7 @@
             .finally(function () { attachBtn.disabled = false; });
     });
 
-    /* ============ 📷 发送图片（支持一次多选，逐张上传保序） ============ */
+    /* ============ 📷 发送图片（多选 + 前端自动压缩，超 2MB 大图也能发） ============ */
     imageBtn.addEventListener('click', function () { imageInput.click(); });
     imageInput.addEventListener('change', async function () {
         var files = Array.prototype.slice.call(imageInput.files || []);
@@ -586,17 +588,37 @@
         if (!files.length) return;
         if (!socket.connected) { setStatus('未连接服务器', true); return; }
         imageBtn.disabled = true;
+        var skipped = [];
         try {
             for (var i = 0; i < files.length; i++) {
                 var f = files[i];
-                // 浏览器端无法像 APP 那样预压缩，先本地拦一道超限的，避免白传
-                if (f.size > 2 * 1024 * 1024) {
-                    setStatus('已跳过 "' + f.name + '"：图片超过 2MB（可用 APP 发送会自动压缩）', true);
+                setStatus('处理中 ' + (i + 1) + '/' + files.length + ' ...');
+                var upFile = f;
+                var tooBig = f.size > 2 * 1024 * 1024;
+                // 超 2MB 大图：浏览器端先压缩到 1.8MB 内再传（动图保持原样，避免丢动画）
+                if (tooBig && f.type !== 'image/gif') {
+                    if (window.imageCompression) {
+                        try {
+                            upFile = await imageCompression(f, {
+                                maxSizeMB: 1.8,
+                                maxWidthOrHeight: 1600,
+                                fileType: f.type,   // 保持原格式：PNG 透明度不丢
+                                useWebWorker: true, // worker 内也走本地库，不碰外网 CDN
+                                libURL: '/static/browser-image-compression.min.js',
+                                onProgress: function (p) {
+                                    setStatus('压缩大图中 ' + Math.round(p) + '% ...');
+                                }
+                            });
+                        } catch (e) { /* 压缩失败回退原文件，仍超限则走下方跳过 */ }
+                    }
+                }
+                if (upFile.size > 2 * 1024 * 1024) {
+                    skipped.push(f.name + (f.type === 'image/gif' ? '（GIF 动图超 2MB）' : '（压后仍超 2MB）'));
                     continue;
                 }
                 setStatus('图片上传中 ' + (i + 1) + '/' + files.length + ' ...');
                 var fd = new FormData();
-                fd.append('image', f);
+                fd.append('image', upFile, f.name);
                 var resp = await fetch('/api/chat/upload_image',
                     { method: 'POST', body: fd, credentials: 'same-origin' });
                 var data = await resp.json().catch(function () { return {}; });
@@ -609,7 +631,11 @@
                     content: data.filename
                 });
             }
-            setStatus('');
+            if (skipped.length) {
+                setStatus('已跳过 ' + skipped.length + ' 张：' + skipped.join('、'), true);
+            } else {
+                setStatus('');
+            }
         } catch (err) {
             setStatus('图片上传失败：' + err.message, true);
         } finally {
