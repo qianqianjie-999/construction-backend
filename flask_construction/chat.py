@@ -204,7 +204,10 @@ def upload_image():
 @chat.route('/images/<filename>')
 def get_chat_image(filename):
     """访问聊天图片（公开访问，浏览器 img 标签不需要 token）"""
-    return send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)
+    resp = send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)
+    # 文件名带时间戳且上传后不可变 -> 永久缓存，避免每次打开重复下载
+    resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    return resp
 
 
 @chat.route('/upload_file', methods=['POST'])
@@ -246,12 +249,15 @@ def upload_file():
 def get_chat_file(filename):
     """下载聊天文件（公开访问，与图片一致）；?name= 可指定浏览器保存文件名"""
     download_name = request.args.get('name')
-    return send_from_directory(
+    resp = send_from_directory(
         current_app.config['UPLOAD_FOLDER'],
         filename,
         as_attachment=True,
         download_name=download_name or filename,
     )
+    # 文件名带时间戳且不可变 -> 允许缓存，重复下载时命中本地/浏览器缓存
+    resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    return resp
 
 
 @chat.route('/logs/<int:log_id>/card', methods=['GET'])
