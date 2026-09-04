@@ -448,8 +448,12 @@ def register_socketio(socketio):
     @socketio.on('recall_message')
     def on_recall_message(data):
         """撤回消息：仅发送者本人可撤回，2 分钟内有效。带 ack 回调用以让前端确认。"""
+        from flask_socketio import request as sio_request
+        sid = sio_request.sid
         user = get_current_user()
         req_id = data.get('request_id') if isinstance(data, dict) else None
+        print(f'[recall] sid={sid} req_id={req_id} user={user.id if user else None} '
+              f'data={data}', flush=True)
 
         def _ack(success, msg_text):
             if req_id:
@@ -457,7 +461,9 @@ def register_socketio(socketio):
                     'request_id': req_id,
                     'success': success,
                     'message': msg_text,
-                })
+                }, room=sid, namespace='/')
+                print(f'[recall_ack] -> sid={sid} success={success} msg={msg_text}',
+                      flush=True)
 
         if not user:
             _ack(False, '未登录')
