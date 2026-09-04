@@ -5,7 +5,9 @@ from werkzeug.utils import secure_filename
 from .models import db, User, Project, Message, MessageRead, ConstructionLog
 from datetime import datetime
 import os
+import uuid
 from functools import wraps
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 chat = Blueprint('chat', __name__)
 
@@ -21,6 +23,12 @@ ALLOWED_FILE_EXTENSIONS = {
 
 # 聊天文件大小上限（字节），默认 100MB；请求总体积仍受 MAX_CONTENT_LENGTH 约束
 MAX_CHAT_FILE_SIZE = int(os.environ.get('MAX_CHAT_FILE_SIZE') or 100 * 1024 * 1024)
+
+# 聊天图片上传体积上限（字节），默认 2MB —— 前端已 70% 压缩，服务端再压一道，杜绝超大图占 3M 下行
+MAX_CHAT_IMAGE_SIZE = int(os.environ.get('MAX_CHAT_IMAGE_SIZE') or 2 * 1024 * 1024)
+# 服务端统一压缩：长边上限 + JPEG/WebP 质量（app 端聊天缩略查看足够，如需更清晰可调大）
+CHAT_IMAGE_MAX_EDGE = int(os.environ.get('CHAT_IMAGE_MAX_EDGE') or 1280)
+CHAT_IMAGE_QUALITY = int(os.environ.get('CHAT_IMAGE_QUALITY') or 80)
 
 # 图片魔数签名（文件头字节）
 IMAGE_SIGNATURES = {
@@ -61,6 +69,38 @@ def validate_image(file_storage):
     head = file_storage.stream.read(32)
     file_storage.stream.seek(0)
     return sniff_image_type(head) is not None
+
+
+def compress_chat_image(src_path, dst_path, max_edge=CHAT_IMAGE_MAX_EDGE, quality=CHAT_IMAGE_QUALITY):
+    """服务端压缩聊天图片：读 src_path，写 dst_path。
+
+    - 先取原始格式（exif_transpose/thumbnail 后 format 可能丢失）
+    - 修正手机拍照 EXIF 方向；超长边缩到 max_edge（LANCZOS）
+    - GIF/WebP 动图原样复制，避免丢动画
+    - JPEG/WebP 按 quality 重编码；PNG 走 optimize
+    压缩失败（损坏/炸弹图）抛异常，由调用方回 400。
+    """
+    with Image.open(src_path) as im:
+        fmt = (im.format or '').upper()
+        # 动图原样复制
+        if getattr(im, 'is_animated', False):
+            im.save(dst_path)
+            return
+        im = ImageOps.exif_transpose(im)
+        if max(im.size) > max_edge:
+            im.thumbnail((max_edge, max_edge), Image.LANCZOS)
+        if fmt in ('JPEG', 'MPO'):
+            if im.mode != 'RGB':
+                im = im.convert('RGB')
+            im.save(dst_path, 'JPEG', quality=quality, optimize=True)
+        elif fmt == 'WEBP':
+            if im.mode not in ('RGB', 'RGBA'):
+                im = im.convert('RGBA')
+            im.save(dst_path, 'WEBP', quality=quality)
+        elif fmt == 'GIF':
+            im.save(dst_path, 'GIF', optimize=True)
+        else:  # PNG 及其他：保持透明通道走 PNG optimize
+            im.save(dst_path, 'PNG', optimize=True)
 
 
 def get_current_user():
@@ -193,17 +233,39 @@ def unread_count():
 @chat.route('/upload_image', methods=['POST'])
 @chat_login_required
 def upload_image():
-    """上传聊天图片，返回文件名，前端通过 socket 推送 image 消息"""
+    """上传聊天图片：体积上限 + 服务端统一压缩，返回文件名，前端通过 socket 推送 image 消息"""
     if 'image' not in request.files:
         return jsonify({'error': 'image is required'}), 400
     file = request.files['image']
     if not validate_image(file):
         return jsonify({'error': 'invalid image file'}), 400
 
-    filename = secure_filename(file.filename)
-    unique_filename = f"chat_{datetime.now().strftime('%Y%m%d%H%M%S%f')}_{filename}"
-    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
-    file.save(file_path)
+    upload_folder = current_app.config['UPLOAD_FOLDER']
+    secure_name = secure_filename(file.filename) or 'image'
+    base = datetime.now().strftime('%Y%m%d%H%M%S%f')
+    unique_filename = f"chat_{base}_{secure_name}"
+    final_path = os.path.join(upload_folder, unique_filename)
+    # 先落临时文件再校验/压缩，避免坏文件直接污染最终目录
+    tmp_path = os.path.join(upload_folder, f".tmp_{base}_{uuid.uuid4().hex}.upload")
+    try:
+        file.save(tmp_path)
+        size = os.path.getsize(tmp_path)
+        if size > MAX_CHAT_IMAGE_SIZE:
+            return jsonify({
+                'error': f'image too large (max {MAX_CHAT_IMAGE_SIZE // (1024 * 1024)}MB)'
+            }), 413
+        if size == 0:
+            return jsonify({'error': 'empty image'}), 400
+        try:
+            compress_chat_image(tmp_path, final_path)
+        except (UnidentifiedImageError, OSError, ValueError):
+            return jsonify({'error': 'image decode failed'}), 400
+    finally:
+        # 压缩已把内容写到 final_path；临时文件无论成败都清掉
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
 
     return jsonify({
         'filename': unique_filename,

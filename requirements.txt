@@ -11,6 +11,8 @@ pymysql>=1.1,<2
 reportlab>=4.0,<5
 flask-cors>=4,<5
 python-dotenv>=1,<2
+# 聊天图片服务端压缩（upload_image）
+Pillow>=10,<12
 
 # ---- 生产运行（gunicorn 由 wsgi.py 启动）----
 # gevent worker 提供 WebSocket（gevent 20+ 已内置，勿装 gevent-websocket，会冲突）
