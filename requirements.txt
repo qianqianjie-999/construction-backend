@@ -1,7 +1,18 @@
-flask
-flask-sqlalchemy
-flask-socketio
-pymysql
-reportlab
-flask-cors
-python-dotenv
+# Python 依赖
+# 约束到兼容大版本，避免将来 `pip install -r` 拉入破坏性升级。
+# 服务器上跑通后，请用下面命令生成精确锁文件并提交，作为重建环境基准：
+#   pip freeze > requirements.lock.txt
+# （下次全新部署用 `pip install -r requirements.lock.txt`）
+
+flask>=3.0,<4
+flask-sqlalchemy>=3.1,<4
+flask-socketio>=5.3,<6
+pymysql>=1.1,<2
+reportlab>=4.0,<5
+flask-cors>=4,<5
+python-dotenv>=1,<2
+
+# ---- 生产运行（gunicorn 由 wsgi.py 启动）----
+# gevent worker 提供 WebSocket（gevent 20+ 已内置，勿装 gevent-websocket，会冲突）
+gunicorn>=21,<23
+gevent>=21,<25

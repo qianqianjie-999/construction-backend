@@ -4,11 +4,30 @@ from .utils.pdf_generator import generate_pdf_for_project
 from werkzeug.security import generate_password_hash
 import os
 import io
+import time
 import zipfile
+from collections import defaultdict
 from datetime import datetime
 
 # 创建管理后台蓝图
 admin = Blueprint('admin', __name__, template_folder='templates')
+
+# ===== 管理后台登录限流（防暴力破解）=====
+# 内存计数：{ ip: [时间戳, ...] }；/api/login 已有同类限流，这里补上后台表单登录口
+_admin_login_attempts = defaultdict(list)
+ADMIN_MAX_ATTEMPTS = 5       # 最大失败次数
+ADMIN_WINDOW_SECONDS = 300   # 统计窗口（秒）
+
+
+def _admin_too_many(ip):
+    now = time.time()
+    attempts = [t for t in _admin_login_attempts[ip] if now - t < ADMIN_WINDOW_SECONDS]
+    _admin_login_attempts[ip] = attempts
+    return len(attempts) >= ADMIN_MAX_ATTEMPTS
+
+
+def _admin_record_attempt(ip):
+    _admin_login_attempts[ip].append(time.time())
 
 
 def admin_login_required(f):
@@ -32,13 +51,18 @@ def admin_login_required(f):
 def admin_login():
     """管理后台登录"""
     if request.method == 'POST':
+        client_ip = request.remote_addr or 'unknown'
+        if _admin_too_many(client_ip):
+            return render_template('admin/login.html', error='尝试次数过多，请 5 分钟后再试（IP 已临时限流）')
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
         user = User.query.filter_by(username=username).first()
         if user and user.check_password(password) and user.role == 'admin':
+            _admin_login_attempts.pop(client_ip, None)  # 成功则清空该 IP 计数
             session['user_id'] = user.id
             session['username'] = user.username
             return redirect(url_for('admin.admin_dashboard'))
+        _admin_record_attempt(client_ip)
         return render_template('admin/login.html', error='用户名或密码错误，或非管理员账户')
     return render_template('admin/login.html')
 
@@ -94,17 +118,28 @@ def project_detail(project_id):
 @admin.route('/admin/project/<int:project_id>/chat')
 @admin_login_required
 def project_chat(project_id):
-    """查看项目群的聊天记录"""
+    """查看项目群的聊天记录
+    只渲染最近 INITIAL 条（时间升序），更早的消息由前端「加载更早」按钮
+    复用 /api/chat/messages?before_id= 分页拉取，避免历史量大时整页卡死。"""
     project = Project.query.get_or_404(project_id)
+    INITIAL = 60
+    base = Message.query.filter_by(project_id=project_id)
+    total = base.count()
+    image_count = base.filter(Message.content_type == 'image').count()
     messages = (
-        Message.query
-        .filter_by(project_id=project_id)
-        .order_by(Message.id.asc())
-        .all()
+        base.order_by(Message.id.desc()).limit(INITIAL).all()
     )
+    messages.reverse()  # 转回时间升序展示
     # 预加载用户信息
     users = {u.id: u for u in User.query.all()}
-    return render_template('admin/chat.html', project=project, messages=messages, users=users)
+    return render_template(
+        'admin/chat.html',
+        project=project,
+        messages=messages,
+        users=users,
+        total=total,
+        image_count=image_count,
+    )
 
 
 @admin.route('/admin/project/<int:project_id>/chat/images/zip')
@@ -198,13 +233,9 @@ def delete_project(project_id):
     project = Project.query.get_or_404(project_id)
     project_name = project.name
 
-    # 1. 删除关联的日志照片文件
-    for log in project.logs:
-        for photo in log.photos:
-            try:
-                os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], photo.filename))
-            except OSError:
-                pass  # 文件已不存在就忽略
+    # 1. 删除磁盘文件：日志照片 + 聊天图片 + 聊天文件（数据库由级联删除处理）
+    from .utils.files import remove_project_files
+    remove_project_files(project, current_app.config['UPLOAD_FOLDER'])
 
     # 2. 级联删除（SQLAlchemy relationship cascade 会处理 logs/photos/messages）
     db.session.delete(project)

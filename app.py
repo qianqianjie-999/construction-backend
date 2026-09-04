@@ -60,17 +60,12 @@ def create_app(config_name=None):
     # 注册 SocketIO 事件
     register_socketio(socketio)
 
-    # Jinja2 过滤器：把 naive UTC datetime 转北京时间
-    from datetime import timezone, timedelta
-    CST = timezone(timedelta(hours=8))
+    # Jinja2 过滤器：把 naive UTC datetime 转北京时间（统一走 utils.timeutil）
+    from flask_construction.utils.timeutil import fmt_beijing
 
     @app.template_filter('beijing_time')
     def beijing_time(dt, fmt='%Y-%m-%d %H:%M:%S'):
-        if dt is None:
-            return '-'
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(CST).strftime(fmt)
+        return fmt_beijing(dt, fmt)
 
     # 根路径重定向到管理后台
     @app.route('/')

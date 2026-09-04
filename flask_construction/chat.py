@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, session, current_app, send_from_directory
 from sqlalchemy import or_
+from sqlalchemy.orm import selectinload
 from werkzeug.utils import secure_filename
 from .models import db, User, Project, Message, MessageRead, ConstructionLog
 from datetime import datetime
@@ -98,20 +99,27 @@ def get_messages():
 
     if around_id:
         # 上下文窗口：以目标消息为中心，向前 half 条 + 本身 + 向后 half 条，时间升序
-        anchor = Message.query.filter_by(project_id=project_id, id=around_id).first()
+        # selectinload 预载 reads，避免 to_dict() 逐条查已读状态（N+1）
+        anchor = (Message.query
+                  .options(selectinload(Message.reads))
+                  .filter_by(project_id=project_id, id=around_id).first())
         if anchor is None:
             return jsonify({'error': 'message not found'}), 404
         half = max(limit // 2, 1)
-        older = (Message.query.filter_by(project_id=project_id)
+        older = (Message.query
+                 .options(selectinload(Message.reads))
+                 .filter_by(project_id=project_id)
                  .filter(Message.id < around_id)
                  .order_by(Message.id.desc()).limit(half).all())
-        newer = (Message.query.filter_by(project_id=project_id)
+        newer = (Message.query
+                 .options(selectinload(Message.reads))
+                 .filter_by(project_id=project_id)
                  .filter(Message.id > around_id)
                  .order_by(Message.id.asc()).limit(half).all())
         msgs = list(reversed(older)) + [anchor] + list(newer)
         return jsonify([m.to_dict(current_user_id=user_id) for m in msgs])
 
-    q = Message.query.filter_by(project_id=project_id)
+    q = Message.query.filter_by(project_id=project_id).options(selectinload(Message.reads))
     if before_id:
         q = q.filter(Message.id < before_id)
     q = q.order_by(Message.id.desc()).limit(limit)
@@ -138,7 +146,9 @@ def search_messages():
         User.nickname.contains(keyword, autoescape=True),
         User.username.contains(keyword, autoescape=True),
     ]
-    query = (Message.query.join(User, Message.user_id == User.id)
+    query = (Message.query
+             .options(selectinload(Message.reads))
+             .join(User, Message.user_id == User.id)
              .filter(Message.project_id == project_id, or_(*conds)))
     total = query.count()
     msgs = query.order_by(Message.id.desc()).limit(limit).all()
@@ -226,28 +236,33 @@ def upload_file():
 
     # 原始文件名只保留文件名部分（不带路径），保存名不含原名，避免中文/特殊字符问题
     orig_name = os.path.basename(f.filename.replace('\\', '/'))
-    data = f.read()
-    if not data:
-        return jsonify({'error': 'empty file'}), 400
-    if len(data) > MAX_CHAT_FILE_SIZE:
-        return jsonify({'error': f'file too large (max {MAX_CHAT_FILE_SIZE // (1024 * 1024)}MB)'}), 413
 
     unique_filename = f"file_{datetime.now().strftime('%Y%m%d%H%M%S%f')}.{ext}"
     file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
-    with open(file_path, 'wb') as out:
-        out.write(data)
+    # 流式落盘（werkzeug FileStorage.save 分块写入），避免 100MB 大文件整体读进内存
+    f.save(file_path)
+    size = os.path.getsize(file_path)
+    if size == 0:
+        os.remove(file_path)
+        return jsonify({'error': 'empty file'}), 400
+    if size > MAX_CHAT_FILE_SIZE:
+        os.remove(file_path)
+        return jsonify({'error': f'file too large (max {MAX_CHAT_FILE_SIZE // (1024 * 1024)}MB)'}), 413
 
     return jsonify({
         'filename': unique_filename,
         'name': orig_name,       # 原始文件名（用于展示和下载命名）
-        'size': len(data),       # 字节数
+        'size': size,            # 字节数
         'url': f'/api/chat/files/{unique_filename}',
     }), 201
 
 
 @chat.route('/files/<path:filename>')
+@chat_login_required
 def get_chat_file(filename):
-    """下载聊天文件（公开访问，与图片一致）；?name= 可指定浏览器保存文件名"""
+    """下载聊天文件（需登录：APP 带 Bearer token、管理页同源 session cookie 均可）；
+    ?name= 可指定浏览器保存文件名。图片接口保持公开以兼容 <img> 标签，
+    文件接口加鉴权防止图纸/文档被未授权下载。"""
     download_name = request.args.get('name')
     resp = send_from_directory(
         current_app.config['UPLOAD_FOLDER'],

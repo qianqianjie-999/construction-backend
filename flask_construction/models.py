@@ -1,21 +1,14 @@
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
+from .utils.timeutil import fmt_beijing
 
 db = SQLAlchemy()
 
-# 北京时间（UTC+8）
-CST = timezone(timedelta(hours=8))
-
 
 def _to_beijing(dt):
-    """将 UTC datetime 转为北京时间字符串"""
-    if dt is None:
-        return None
-    # 数据库存的是 naive UTC（datetime.utcnow），先标记为 UTC 再转北京时间
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(CST).strftime('%Y-%m-%d %H:%M:%S')
+    """将 UTC datetime 转为北京时间字符串（None 返回 None，兼容历史调用）"""
+    return fmt_beijing(dt, default=None)
 
 class User(db.Model):
     __tablename__ = 'users'

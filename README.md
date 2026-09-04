@@ -218,3 +218,40 @@ server {
 | frpc remote_port=None | frpc.toml 写错成 `remote = 9304` 不是 `remote_port` | 改 `remote_port = 19304` |
 | frps 端口冲突 | frpc remote_port 和 Nginx 监听同端口冲突 | frps allow_ports 用 19304，frpc remote_port=19304，Nginx 反代 127.0.0.1:19304 |
 | Nginx WebSocket 不升级 | 缺 Upgrade/Connection 头 | Nginx 加 `proxy_set_header Upgrade $http_upgrade;` |
+
+## 运维日常
+
+### 备份（数据库 + uploads）
+
+项目内置 `scripts/backup.sh`：mysqldump 数据库 + tar 打包上传目录，保留最近 7 天。
+
+```bash
+# 手动试跑
+bash scripts/backup.sh
+
+# 加入 crontab（凌晨 2 点，需自行配置 DB_PASS 或写进脚本）
+# 0 2 * * * cd /data/sata_1T/www_project/construction-backend && bash scripts/backup.sh >> logs/backup.log 2>&1
+```
+
+备份产物默认在 `/var/backups/construction/`，可用 `BACKUP_ROOT` 变量修改。建议把备份目录放到与项目不同的磁盘/挂载点。
+
+### 孤儿文件清理（磁盘瘦身）
+
+删除项目/日志只清理数据库与日志照片，聊天图片/文件会残留磁盘。`scripts/cleanup_orphans.py` 对比数据库引用找出孤儿：
+
+```bash
+# dry-run 先看列表
+python3 scripts/cleanup_orphans.py --uploads /data/sata_1T/www_project/construction-backend/uploads
+
+# 确认后真正删除（可加 --min-age-days 调整保护期，默认 1 天）
+python3 scripts/cleanup_orphans.py --uploads <uploads 绝对路径> --apply
+```
+
+### 上线 checklist
+
+- [ ] `FLASK_SECRET_KEY` 设为随机长字符串（`python -c "import secrets; print(secrets.token_hex(32))"`）
+- [ ] 后台默认密码 `admin/admin123` 首次登录后立即修改
+- [ ] Nginx `client_max_body_size 100m;`（聊天大文件，否则 413）
+- [ ] 上传下载：图片公开可读（供 `<img>` 标签），**聊天文件接口已加登录鉴权**（APP 走 Bearer token、后台同源 cookie）
+- [ ] 依赖锁定：`pip freeze > requirements.lock.txt` 并提交，之后新环境用它安装
+

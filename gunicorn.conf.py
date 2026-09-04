@@ -1,9 +1,9 @@
 # ============================================================
-# gunicorn.conf.py —— 生产配置（gevent + gevent-websocket）
+# gunicorn.conf.py —— 生产配置（gevent）
 #
 # 关键:
 #   - wsgi.py 里必须在最前面 import gevent.monkey; gevent.monkey.patch_all()
-#   - gevent-websocket 提供 gevent worker 的 WebSocket 支持
+#   - WebSocket 由 gevent 20+ 内置支持，勿再安装 gevent-websocket（会冲突，见 README 踩坑记录）
 #   - workers = 1（gevent 协程模型，多 worker 会断 Socket.IO 长连接）
 # ============================================================
 
