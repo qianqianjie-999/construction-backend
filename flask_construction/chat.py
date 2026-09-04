@@ -447,37 +447,52 @@ def register_socketio(socketio):
 
     @socketio.on('recall_message')
     def on_recall_message(data):
-        """撤回消息：仅发送者本人可撤回，2 分钟内有效"""
+        """撤回消息：仅发送者本人可撤回，2 分钟内有效。带 ack 回调用以让前端确认。"""
         user = get_current_user()
+        req_id = data.get('request_id') if isinstance(data, dict) else None
+
+        def _ack(success, msg_text):
+            if req_id:
+                emit('recall_ack', {
+                    'request_id': req_id,
+                    'success': success,
+                    'message': msg_text,
+                })
+
         if not user:
-            emit('error', {'message': 'not authenticated'})
+            _ack(False, '未登录')
             return
-
-        message_id = data.get('message_id')
+        message_id = data.get('message_id') if isinstance(data, dict) else None
         if not message_id:
-            emit('error', {'message': 'message_id required'})
+            _ack(False, 'message_id required')
             return
-
         msg = Message.query.get(message_id)
         if not msg:
-            emit('error', {'message': 'message not found'})
+            _ack(False, '消息不存在')
             return
         if msg.user_id != user.id:
-            emit('error', {'message': '只能撤回自己的消息'})
+            _ack(False, '只能撤回自己的消息')
             return
         if msg.recalled:
-            emit('error', {'message': '消息已撤回'})
+            _ack(False, '消息已撤回')
             return
-        # 2 分钟内可撤回
         from datetime import timedelta
-        if datetime.utcnow() - msg.created_at > timedelta(minutes=2):
-            emit('error', {'message': '超过 2 分钟，无法撤回'})
+        diff = datetime.utcnow() - msg.created_at
+        if diff > timedelta(minutes=2):
+            _ack(False, '超过 2 分钟，无法撤回')
             return
 
         msg.recalled = True
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            _ack(False, f'保存失败: {e}')
+            return
+
         emit('message_recalled', {'message_id': msg.id, 'project_id': msg.project_id},
              room=f'project_{msg.project_id}')
+        _ack(True, '撤回成功')
 
     @socketio.on('mark_read')
     def on_mark_read(data):
