@@ -261,7 +261,9 @@
             <input type="file" id="fileInput" hidden
                    accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.dwg,.dxf,.txt,.csv,.md,.zip,.rar,.7z">
             <button class="attach-btn" id="attachBtn" type="button">📎 发送文件</button>
-            <input type="text" id="msgInput" placeholder="输入消息，回车发送（word/excel/ppt/pdf/dwg 可走附件上传）" autocomplete="off">
+            <input type="file" id="imageInput" hidden accept="image/*" multiple>
+            <button class="attach-btn" id="imageBtn" type="button">📷 图片</button>
+            <input type="text" id="msgInput" placeholder="输入消息，回车发送（word/excel/ppt/pdf/dwg 走📎，图片走📷 可多选）" autocomplete="off">
             <span class="send-status" id="sendStatus"></span>
             <button class="send-btn" id="sendBtn" disabled>发送</button>
         </div>
@@ -289,6 +291,8 @@
     var msgInput = document.getElementById('msgInput');
     var attachBtn = document.getElementById('attachBtn');
     var fileInput = document.getElementById('fileInput');
+    var imageBtn = document.getElementById('imageBtn');
+    var imageInput = document.getElementById('imageInput');
     var sendStatus = document.getElementById('sendStatus');
 
     function setStatus(txt, isError) {
@@ -572,6 +576,45 @@
                 setStatus('上传失败：' + (err.status === 413 ? '文件过大' : err.message), true);
             })
             .finally(function () { attachBtn.disabled = false; });
+    });
+
+    /* ============ 📷 发送图片（支持一次多选，逐张上传保序） ============ */
+    imageBtn.addEventListener('click', function () { imageInput.click(); });
+    imageInput.addEventListener('change', async function () {
+        var files = Array.prototype.slice.call(imageInput.files || []);
+        imageInput.value = '';
+        if (!files.length) return;
+        if (!socket.connected) { setStatus('未连接服务器', true); return; }
+        imageBtn.disabled = true;
+        try {
+            for (var i = 0; i < files.length; i++) {
+                var f = files[i];
+                // 浏览器端无法像 APP 那样预压缩，先本地拦一道超限的，避免白传
+                if (f.size > 2 * 1024 * 1024) {
+                    setStatus('已跳过 "' + f.name + '"：图片超过 2MB（可用 APP 发送会自动压缩）', true);
+                    continue;
+                }
+                setStatus('图片上传中 ' + (i + 1) + '/' + files.length + ' ...');
+                var fd = new FormData();
+                fd.append('image', f);
+                var resp = await fetch('/api/chat/upload_image',
+                    { method: 'POST', body: fd, credentials: 'same-origin' });
+                var data = await resp.json().catch(function () { return {}; });
+                if (!resp.ok) {
+                    throw new Error((data.error || '上传失败') + (resp.status === 413 ? '（图片超过 2MB）' : ''));
+                }
+                socket.emit('send_message', {
+                    project_id: PROJECT_ID,
+                    content_type: 'image',
+                    content: data.filename
+                });
+            }
+            setStatus('');
+        } catch (err) {
+            setStatus('图片上传失败：' + err.message, true);
+        } finally {
+            imageBtn.disabled = false;
+        }
     });
     </script>
 </body>
