@@ -445,6 +445,40 @@ def register_socketio(socketio):
         msg_data = msg.to_dict()
         emit('receive_message', msg_data, room=f'project_{project_id}')
 
+    @socketio.on('recall_message')
+    def on_recall_message(data):
+        """撤回消息：仅发送者本人可撤回，2 分钟内有效"""
+        user = get_current_user()
+        if not user:
+            emit('error', {'message': 'not authenticated'})
+            return
+
+        message_id = data.get('message_id')
+        if not message_id:
+            emit('error', {'message': 'message_id required'})
+            return
+
+        msg = Message.query.get(message_id)
+        if not msg:
+            emit('error', {'message': 'message not found'})
+            return
+        if msg.user_id != user.id:
+            emit('error', {'message': '只能撤回自己的消息'})
+            return
+        if msg.recalled:
+            emit('error', {'message': '消息已撤回'})
+            return
+        # 2 分钟内可撤回
+        from datetime import timedelta
+        if datetime.utcnow() - msg.created_at > timedelta(minutes=2):
+            emit('error', {'message': '超过 2 分钟，无法撤回'})
+            return
+
+        msg.recalled = True
+        db.session.commit()
+        emit('message_recalled', {'message_id': msg.id, 'project_id': msg.project_id},
+             room=f'project_{msg.project_id}')
+
     @socketio.on('mark_read')
     def on_mark_read(data):
         """标记消息已读（批量）"""

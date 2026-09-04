@@ -227,7 +227,9 @@
                         <span class="username">@{{ user.username if user else 'unknown' }}</span>
                         <span class="time">{{ msg.created_at | beijing_time }}</span>
                     </div>
-                    {% if msg.content_type == 'text' %}
+                    {% if msg.recalled %}
+                        <div class="message-body text" style="color:#94a3b8;font-style:italic;">该消息已被撤回</div>
+                    {% elif msg.content_type == 'text' %}
                         <div class="message-body text">{{ msg.content }}</div>
                     {% elif msg.content_type == 'image' %}
                         <div class="message-body image">
@@ -315,6 +317,16 @@
     socket.on('receive_message', function (msg) {
         if (String(msg.project_id) !== String(PROJECT_ID)) return;
         appendMessage(msg);
+    });
+    socket.on('message_recalled', function (data) {
+        var item = document.querySelector('.message-item[data-mid="' + data.message_id + '"]');
+        if (item) {
+            var body = item.querySelector('.message-body');
+            if (body) {
+                body.innerHTML = '<span style="color:#94a3b8;font-style:italic;">该消息已被撤回</span>';
+                body.className = 'message-body text';
+            }
+        }
     });
 
     function fileStyle(ext) {

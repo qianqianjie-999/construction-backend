@@ -97,6 +97,7 @@ class Message(db.Model):
     content = db.Column(db.Text)                              # 文本内容 / 图片文件名 / 文件元信息 JSON / ...
     log_id = db.Column(db.Integer, db.ForeignKey('construction_logs.id'))  # 转发日志卡片时引用
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    recalled = db.Column(db.Boolean, default=False, nullable=False)  # 是否已撤回
     
     user = db.relationship('User', backref='messages')
     log = db.relationship('ConstructionLog', backref='forwarded_in_messages')
@@ -114,6 +115,7 @@ class Message(db.Model):
             'content': self.content,
             'log_id': self.log_id,
             'created_at': _to_beijing(self.created_at),
+            'recalled': self.recalled or False,
         }
         if current_user_id is not None:
             d['is_read_by_me'] = any(r.user_id == current_user_id for r in self.reads)

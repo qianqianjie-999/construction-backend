@@ -29,6 +29,14 @@ app = create_app()
 # 确保表存在（幂等）
 with app.app_context():
     db.create_all()
+    # 轻量迁移：给 messages 表加 recalled 列（已存在则跳过）
+    from sqlalchemy import text, inspect
+    insp = inspect(db.engine)
+    cols = [c['name'] for c in insp.get_columns('messages')]
+    if 'recalled' not in cols:
+        db.session.execute(text('ALTER TABLE messages ADD COLUMN recalled BOOLEAN NOT NULL DEFAULT 0'))
+        db.session.commit()
+        print('迁移：messages 表已添加 recalled 列')
     admin_user = User.query.filter_by(username='admin').first()
     if not admin_user:
         admin_user = User(username='admin', nickname='管理员', role='admin')
