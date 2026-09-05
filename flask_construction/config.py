@@ -11,9 +11,32 @@ def _parse_bool(v, default=False):
     return str(v).lower() in ('1', 'true', 'yes', 'on')
 
 
+def _get_secret_key():
+    """获取稳定的 SECRET_KEY。
+
+    优先级：环境变量 FLASK_SECRET_KEY > instance/.secret_key 持久化文件 > 随机生成并持久化。
+    避免每次重启生成新密钥导致所有已登录用户的签名 token 失效。
+    """
+    key = os.environ.get('FLASK_SECRET_KEY')
+    if key:
+        return key
+    key_file = os.path.join('instance', '.secret_key')
+    if os.path.exists(key_file):
+        with open(key_file, 'r') as f:
+            key = f.read().strip()
+        if key:
+            return key
+    import secrets
+    key = secrets.token_hex(32)
+    os.makedirs('instance', exist_ok=True)
+    with open(key_file, 'w') as f:
+        f.write(key)
+    return key
+
+
 class Config:
     """基础配置"""
-    SECRET_KEY = os.environ.get('FLASK_SECRET_KEY') or os.urandom(24)
+    SECRET_KEY = _get_secret_key()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # 上传配置
