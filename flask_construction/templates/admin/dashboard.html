@@ -37,14 +37,13 @@
     </div>
     <div class="card-body">
         <p style="color: var(--text-secondary); font-size: 0.85rem; margin: 0 0 12px;">
-            提示：新创建的项目自动排在最上面；通过 ↑↓ 可人工调整顺序（如把快完工的项目移到后边），APP 端项目列表顺序与此一致。
+            提示：新创建的项目自动排在最上面；点击「置顶」可将项目移到最前（后置顶的顶替先置顶的），APP 端项目列表顺序与此一致。
         </p>
         <div class="table-container">
             <table>
                 <thead>
                     <tr>
                         <th>序号</th>
-                        <th>排序</th>
                         <th>项目名称</th>
                         <th>工程地点</th>
                         <th>建设单位</th>
@@ -56,22 +55,23 @@
                     {% for project in projects %}
                     <tr>
                         <td><span class="badge badge-primary">{{ loop.index }}</span></td>
-                        <td style="white-space: nowrap;">
-                            <form method="POST" action="{{ url_for('admin.move_project', project_id=project.id) }}" style="display:inline;">
-                                <button type="submit" name="direction" value="up" {% if loop.first %}disabled{% endif %}
-                                        class="btn btn-secondary" style="padding: 4px 10px;" title="上移（排前面）">↑</button>
-                            </form>
-                            <form method="POST" action="{{ url_for('admin.move_project', project_id=project.id) }}" style="display:inline; margin-left: 4px;">
-                                <button type="submit" name="direction" value="down" {% if loop.last %}disabled{% endif %}
-                                        class="btn btn-secondary" style="padding: 4px 10px;" title="下移（排后面，可把快完工的挪到后边）">↓</button>
-                            </form>
-                        </td>
                         <td><strong>{{ project.name }}</strong></td>
                         <td>{{ project.location or '-' }}</td>
                         <td>{{ project.company or '-' }}</td>
                         <td>{{ project.manager or '-' }}</td>
-                        <td>
-                            <a href="{{ url_for('admin.project_detail', project_id=project.id) }}" class="btn btn-primary" style="padding: 6px 12px; font-size: 0.85rem;">
+                        <td style="white-space: nowrap;">
+                            <form method="POST" action="{{ url_for('admin.pin_project', project_id=project.id) }}" style="display:inline;">
+                                <button type="submit" {% if loop.first %}disabled{% endif %}
+                                        class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.85rem;"
+                                        title="置顶（移到列表最前面）">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px;">
+                                        <line x1="12" y1="19" x2="12" y2="5"></line>
+                                        <polyline points="5 12 12 5 19 12"></polyline>
+                                    </svg>
+                                    置顶
+                                </button>
+                            </form>
+                            <a href="{{ url_for('admin.project_detail', project_id=project.id) }}" class="btn btn-primary" style="padding: 6px 12px; font-size: 0.85rem; margin-left: 4px;">
                                 查看详情
                             </a>
                             <form method="POST" action="{{ url_for('admin.delete_project', project_id=project.id) }}"

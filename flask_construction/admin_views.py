@@ -89,29 +89,13 @@ def admin_dashboard():
     return render_template('admin/dashboard.html', projects=projects)
 
 
-@admin.route('/admin/project/<int:project_id>/move', methods=['POST'])
+@admin.route('/admin/project/<int:project_id>/pin', methods=['POST'])
 @admin_login_required
-def move_project(project_id):
-    """人工排序：上移/下移一位（direction ∈ up/down，来自列表页表单按钮）"""
-    direction = request.form.get('direction')
-    projects = _ordered_projects()
-
-    # 规范化 sort_order 为 0..n-1（兼容历史数据全为 0 的情况）
-    for i, p in enumerate(projects):
-        if p.sort_order != i:
-            p.sort_order = i
-    db.session.commit()
-
-    idx = next((i for i, p in enumerate(projects) if p.id == project_id), None)
-    if idx is None:
-        return redirect(url_for('admin.admin_dashboard'))
-
-    if direction == 'up' and idx > 0:
-        projects[idx].sort_order, projects[idx - 1].sort_order = \
-            projects[idx - 1].sort_order, projects[idx].sort_order
-    elif direction == 'down' and idx < len(projects) - 1:
-        projects[idx].sort_order, projects[idx + 1].sort_order = \
-            projects[idx + 1].sort_order, projects[idx].sort_order
+def pin_project(project_id):
+    """置顶项目：排到列表最前面，原先靠前的项目依次后移（后置顶的顶替先置顶的）"""
+    project = Project.query.get_or_404(project_id)
+    min_order = db.session.query(db.func.min(Project.sort_order)).scalar()
+    project.sort_order = (min_order if min_order is not None else 0) - 1
     db.session.commit()
     return redirect(url_for('admin.admin_dashboard'))
 
