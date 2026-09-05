@@ -1,10 +1,11 @@
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+from xml.sax.saxutils import escape
 from io import BytesIO
 import os
 from flask import current_app
@@ -41,6 +42,7 @@ def generate_pdf_for_project(project):
     """
     为给定的项目生成施工日志 PDF，按照标准格式输出。
     不包含照片，内容铺满A4纸。
+    一个项目有多条日志时，每条日志占一页，全部输出在同一个 PDF 里。
     """
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=25, rightMargin=25, topMargin=30, bottomMargin=30)
@@ -72,10 +74,26 @@ def generate_pdf_for_project(project):
         title_style = styles['Heading1']
         normal_style = styles['Normal']
 
+    # 单元格文本样式：自动换行，不溢出框
+    cell_style = ParagraphStyle(
+        'CellStyle',
+        parent=styles['Normal'],
+        fontName=cn_font,
+        fontSize=11,
+        leading=16,
+        alignment=0,  # LEFT
+    )
+
+    def _para(text):
+        """把长文本转成可自动换行的 Paragraph，处理特殊字符与换行符"""
+        t = escape(text if text else '-')
+        t = t.replace('\n', '<br/>')
+        return Paragraph(t, cell_style)
+
     # 遍历项目下的所有日志，按日期升序排列
     sorted_logs = sorted(project.logs, key=lambda x: x.date)
-    
-    for log in sorted_logs:
+
+    for i, log in enumerate(sorted_logs):
         # 标题：施工日志
         title = Paragraph("施工日志", title_style)
         story.append(title)
@@ -84,12 +102,12 @@ def generate_pdf_for_project(project):
         # 日期和天气信息表格 - 总宽度540，与下面内容区等宽
         weekday_map = {0: '星期一', 1: '星期二', 2: '星期三', 3: '星期四', 4: '星期五', 5: '星期六', 6: '星期日'}
         weekday = weekday_map.get(log.date.weekday(), '')
-        
+
         date_info_data = [
             ['日期', log.date.strftime('%Y 年 %m 月 %d 日'), '星期', weekday, '天气', log.weather or '-'],
             ['气温', log.temperature or '-', '风力', log.wind_force or '-', '风向', log.wind_direction or '-'],
         ]
-        
+
         date_info_table = Table(date_info_data, colWidths=[70, 140, 70, 90, 70, 100])  # 总宽度540
         date_info_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
@@ -108,9 +126,9 @@ def generate_pdf_for_project(project):
         # 当日工程信息表格 - 总宽度540，与下面内容区等宽
         work_info_data = [
             ['当日工程施工部位', '当日工程施工内容', '当日工程形象进度'],
-            [log.construction_part or '-', log.work_content or '-', log.progress or '-'],
+            [_para(log.construction_part), _para(log.work_content), _para(log.progress)],
         ]
-        
+
         work_info_table = Table(work_info_data, colWidths=[180, 180, 180])  # 总宽度540
         work_info_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
@@ -128,12 +146,12 @@ def generate_pdf_for_project(project):
         # 施工情况记录 - 增加高度填充页面
         construction_record_data = [
             ['施工情况记录（部位项目、机械作业、班组工作、施工存在问题等）：'],
-            [log.personnel or '-'],
+            [_para(log.personnel)],
             [''],
             [''],
             [''],
         ]
-        
+
         construction_record_table = Table(construction_record_data, colWidths=[540])
         construction_record_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, 0), 'LEFT'),
@@ -153,12 +171,12 @@ def generate_pdf_for_project(project):
         # 技术质量安全工作记录 - 增加高度填充页面
         tech_safety_data = [
             ['技术质量安全工作记录（技术质量安全活动、技术质量安全问题、检查评定验收等）：'],
-            [log.safety_notes or '-'],
+            [_para(log.safety_notes)],
             [''],
             [''],
             [''],
         ]
-        
+
         tech_safety_table = Table(tech_safety_data, colWidths=[540])
         tech_safety_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, 0), 'LEFT'),
@@ -178,12 +196,12 @@ def generate_pdf_for_project(project):
         # 今日材料进场记录 - 增加高度填充页面
         material_data = [
             ['今日材料、构配件进场、检（试）验情况记录'],
-            [log.materials or '-'],
+            [_para(log.materials)],
             [''],
             [''],
             [''],
         ]
-        
+
         material_table = Table(material_data, colWidths=[540])
         material_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, 0), 'LEFT'),
@@ -204,7 +222,7 @@ def generate_pdf_for_project(project):
         sign_data = [
             ['工程负责人', log.project_manager or '-', '记录人', log.recorder or '-'],
         ]
-        
+
         sign_table = Table(sign_data, colWidths=[100, 170, 100, 170])  # 总宽度540
         sign_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
@@ -220,17 +238,9 @@ def generate_pdf_for_project(project):
         ]))
         story.append(sign_table)
 
-        # 添加分页（最后一页不添加）
-        if log != sorted_logs[-1]:
-            story.append(Spacer(1, 15))
-            story.append(Paragraph('<< 下一页 >>', ParagraphStyle(
-                'PageBreak',
-                fontName=cn_font,
-                fontSize=10,
-                alignment=1
-            )))
-            doc.build(story)
-            story = []
+        # 每个日志之间分页（最后一条日志后不分页）
+        if i < len(sorted_logs) - 1:
+            story.append(PageBreak())
 
     try:
         doc.build(story)
