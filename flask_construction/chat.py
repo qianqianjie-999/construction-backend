@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, session, current_app, send_from_directory
+from flask import Blueprint, request, jsonify, session, current_app, send_from_directory, abort
 from sqlalchemy import or_
 from sqlalchemy.orm import selectinload
 from werkzeug.utils import secure_filename
@@ -189,7 +189,8 @@ def search_messages():
     query = (Message.query
              .options(selectinload(Message.reads))
              .join(User, Message.user_id == User.id)
-             .filter(Message.project_id == project_id, or_(*conds)))
+             .filter(Message.project_id == project_id, Message.recalled.is_(False))
+             .filter(or_(*conds)))
     total = query.count()
     msgs = query.order_by(Message.id.desc()).limit(limit).all()
 
@@ -276,6 +277,10 @@ def upload_image():
 @chat.route('/images/<filename>')
 def get_chat_image(filename):
     """访问聊天图片（公开访问，浏览器 img 标签不需要 token）"""
+    # 兜底：消息已撤回时即使磁盘文件删除失败也拒绝访问
+    ref = Message.query.filter_by(content_type='image', content=filename).first()
+    if ref is not None and ref.recalled:
+        abort(404)
     resp = send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)
     # 文件名带时间戳且上传后不可变 -> 永久缓存，避免每次打开重复下载
     resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
@@ -325,6 +330,15 @@ def get_chat_file(filename):
     """下载聊天文件（需登录：APP 带 Bearer token、管理页同源 session cookie 均可）；
     ?name= 可指定浏览器保存文件名。图片接口保持公开以兼容 <img> 标签，
     文件接口加鉴权防止图纸/文档被未授权下载。"""
+    # 兜底：消息已撤回时即使磁盘文件删除失败也拒绝下载
+    # （file 消息 content 为 JSON 元信息，存储文件名 file_<时间戳>.<ext> 全局唯一）
+    ref = (Message.query
+           .filter(Message.content_type == 'file',
+                   Message.content.like(f'%{filename}%'))
+           .first())
+    if ref is not None and ref.recalled:
+        abort(404)
+
     download_name = request.args.get('name')
     resp = send_from_directory(
         current_app.config['UPLOAD_FOLDER'],

@@ -115,8 +115,10 @@ class Message(db.Model):
             'nickname': (self.user.nickname or self.user.username) if self.user else None,
             'avatar': self.user.avatar if self.user else None,
             'content_type': self.content_type,
-            'content': self.content,
-            'log_id': self.log_id,
+            # 已撤回消息不下发任何内容（文本/图片文件名/文件元信息/日志卡片引用），
+            # 前端仅凭 recalled 标志渲染"撤回了一条消息"占位，防止抓包/历史接口泄露
+            'content': None if self.recalled else self.content,
+            'log_id': None if self.recalled else self.log_id,
             'created_at': _to_beijing(self.created_at),
             'recalled': self.recalled or False,
         }
