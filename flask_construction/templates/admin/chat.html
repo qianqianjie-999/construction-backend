@@ -213,9 +213,15 @@
             <div class="actions">
                 <span class="count" id="msgCount">共 {{ total }} 条 · 图片 {{ image_count }} 张</span>
                 <button class="btn-download" id="loadMoreBtn" type="button" style="background:#475569;">↑ 加载更早</button>
+                {% if image_count > 0 %}
                 <a href="/admin/project/{{ project.id }}/chat/images/zip" class="btn-download">
                     📦 一键下载所有图片
                 </a>
+                {% else %}
+                <span class="btn-download" style="opacity: 0.45; pointer-events: none;" title="没有可下载的图片">
+                    📦 一键下载所有图片
+                </span>
+                {% endif %}
             </div>
         </div>
         <div class="search-result-bar" id="searchResultBar"></div>

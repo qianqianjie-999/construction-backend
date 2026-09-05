@@ -144,7 +144,10 @@ def project_chat(project_id):
     INITIAL = 60
     base = Message.query.filter_by(project_id=project_id)
     total = base.count()
-    image_count = base.filter(Message.content_type == 'image').count()
+    # 图片计数排除已撤回，与"一键下载所有图片"的实际可下载张数一致
+    image_count = (
+        base.filter(Message.content_type == 'image', Message.recalled.is_(False)).count()
+    )
     messages = (
         base.order_by(Message.id.desc()).limit(INITIAL).all()
     )
