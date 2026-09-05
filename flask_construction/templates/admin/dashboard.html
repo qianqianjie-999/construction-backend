@@ -36,11 +36,15 @@
         <span class="badge badge-primary" style="float: right;">{{ projects|length }} 个项目</span>
     </div>
     <div class="card-body">
+        <p style="color: var(--text-secondary); font-size: 0.85rem; margin: 0 0 12px;">
+            提示：新创建的项目自动排在最上面；通过 ↑↓ 可人工调整顺序（如把快完工的项目移到后边），APP 端项目列表顺序与此一致。
+        </p>
         <div class="table-container">
             <table>
                 <thead>
                     <tr>
                         <th>序号</th>
+                        <th>排序</th>
                         <th>项目名称</th>
                         <th>工程地点</th>
                         <th>建设单位</th>
@@ -52,6 +56,16 @@
                     {% for project in projects %}
                     <tr>
                         <td><span class="badge badge-primary">{{ loop.index }}</span></td>
+                        <td style="white-space: nowrap;">
+                            <form method="POST" action="{{ url_for('admin.move_project', project_id=project.id) }}" style="display:inline;">
+                                <button type="submit" name="direction" value="up" {% if loop.first %}disabled{% endif %}
+                                        class="btn btn-secondary" style="padding: 4px 10px;" title="上移（排前面）">↑</button>
+                            </form>
+                            <form method="POST" action="{{ url_for('admin.move_project', project_id=project.id) }}" style="display:inline; margin-left: 4px;">
+                                <button type="submit" name="direction" value="down" {% if loop.last %}disabled{% endif %}
+                                        class="btn btn-secondary" style="padding: 4px 10px;" title="下移（排后面，可把快完工的挪到后边）">↓</button>
+                            </form>
+                        </td>
                         <td><strong>{{ project.name }}</strong></td>
                         <td>{{ project.location or '-' }}</td>
                         <td>{{ project.company or '-' }}</td>

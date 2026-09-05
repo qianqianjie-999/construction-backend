@@ -9,6 +9,29 @@ import os
 socketio = SocketIO(cors_allowed_origins="*")
 
 
+def _ensure_project_sort_column(app):
+    """轻量迁移：projects 表补 sort_order 列。
+
+    db.create_all() 不会给已存在的表加新列，生产库（MySQL）靠这里在启动时自动补列，
+    幂等可重复执行。
+    """
+    from sqlalchemy import inspect, text
+    with app.app_context():
+        try:
+            insp = inspect(db.engine)
+            if not insp.has_table('projects'):
+                return
+            cols = [c['name'] for c in insp.get_columns('projects')]
+            if 'sort_order' not in cols:
+                with db.engine.begin() as conn:
+                    conn.execute(text(
+                        'ALTER TABLE projects ADD COLUMN sort_order INT NOT NULL DEFAULT 0'
+                    ))
+                app.logger.info('projects 表已自动补充 sort_order 列')
+        except Exception as e:
+            app.logger.warning(f'检查/补充 projects.sort_order 列失败: {e}')
+
+
 def create_app(config_name=None):
     if config_name is None:
         config_name = os.environ.get('FLASK_CONFIG', 'default')
@@ -71,6 +94,9 @@ def create_app(config_name=None):
     @app.route('/')
     def index():
         return redirect('/admin')
+
+    # 启动时自动补列（幂等）
+    _ensure_project_sort_column(app)
 
     return app
 

@@ -38,13 +38,16 @@ class User(db.Model):
 
 class Project(db.Model):
     __tablename__ = 'projects'
-    
+
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False)  # 项目名称
     location = db.Column(db.String(255))              # 工程地点/路段
     company = db.Column(db.String(255))               # 施工单位
     manager = db.Column(db.String(100))               # 项目经理
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # 人工排序：值小者靠前；同为默认值 0 时按创建时间倒序（新项目排最上边）。
+    # 快完工的项目可在后台用"下移"人工挪到后面。
+    sort_order = db.Column(db.Integer, default=0, nullable=False, index=True)
     
     # 关联日志
     logs = db.relationship('ConstructionLog', backref='project', lazy=True, cascade='all, delete-orphan')

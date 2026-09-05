@@ -58,8 +58,10 @@ def save_uploaded_file(file_storage, prefix=''):
 @api.route('/projects', methods=['GET'])
 @login_required
 def get_projects():
-    """获取所有项目列表"""
-    projects = Project.query.all()
+    """获取所有项目列表（与后台人工排序一致：sort_order 小者在前，同值时新项目在前）"""
+    projects = Project.query.order_by(
+        Project.sort_order.asc(), Project.created_at.desc()
+    ).all()
     return jsonify([{
         'id': p.id,
         'name': p.name,
