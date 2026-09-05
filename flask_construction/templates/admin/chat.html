@@ -91,6 +91,13 @@
         .nickname { font-weight: 600; font-size: 14px; color: #1a2332; }
         .username { font-size: 12px; color: #94a3b8; }
         .time { font-size: 12px; color: #64748b; margin-left: auto; }
+        .recall-btn {
+            border: none; background: transparent; color: #94a3b8;
+            font-size: 12px; cursor: pointer; padding: 0 4px; line-height: 1;
+            opacity: 0; transition: opacity 0.15s;
+        }
+        .message-item:hover .recall-btn { opacity: 1; }
+        .recall-btn:hover { color: #ef4444; }
         .message-body {
             padding: 10px 14px;
             background: #f1f5f9;
@@ -226,6 +233,9 @@
                         </span>
                         <span class="username">@{{ user.username if user else 'unknown' }}</span>
                         <span class="time">{{ msg.created_at | beijing_time }}</span>
+                        {% if not msg.recalled %}
+                        <button class="recall-btn" data-mid="{{ msg.id }}" type="button" title="撤回该消息">撤回</button>
+                        {% endif %}
                     </div>
                     {% if msg.recalled %}
                         <div class="message-body text" style="color:#94a3b8;font-style:italic;">该消息已被撤回</div>
@@ -326,7 +336,27 @@
                 body.innerHTML = '<span style="color:#94a3b8;font-style:italic;">该消息已被撤回</span>';
                 body.className = 'message-body text';
             }
+            var rb = item.querySelector('.recall-btn');
+            if (rb) rb.remove();
         }
+    });
+
+    // 撤回回执（管理员撤回成功/失败提示）
+    socket.on('recall_ack', function (data) {
+        if (data && !data.success) {
+            alert(data.message || '撤回失败');
+        }
+    });
+
+    // 撤回按钮：事件委托（消息是动态追加的）
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest ? e.target.closest('.recall-btn') : null;
+        if (!btn) return;
+        var mid = btn.getAttribute('data-mid');
+        if (!mid) return;
+        if (!socket.connected) { alert('未连接服务器'); return; }
+        if (!confirm('确定撤回这条消息吗？')) return;
+        socket.emit('recall_message', { message_id: parseInt(mid, 10) });
     });
 
     function fileStyle(ext) {
@@ -513,7 +543,9 @@
     function renderItem(msg) {
         var nick = msg.nickname || msg.username || '未知用户';
         var body = '';
-        if (msg.content_type === 'image') {
+        if (msg.recalled) {
+            body = '<div class="message-body text" style="color:#94a3b8;font-style:italic;">该消息已被撤回</div>';
+        } else if (msg.content_type === 'image') {
             body = '<div class="message-body image"><img src="/api/chat/images/' +
                 encodeURIComponent(msg.content || '') + '" alt="图片消息" onclick="enlargeImage(this)"></div>';
         } else if (msg.content_type === 'file') {
@@ -535,6 +567,7 @@
             '<span class="nickname">' + escapeHtml(nick) + '</span>' +
             '<span class="username">@' + escapeHtml(msg.username || '') + '</span>' +
             '<span class="time">' + escapeHtml(String(msg.created_at || '').slice(11, 16)) + '</span>' +
+            (msg.recalled ? '' : '<button class="recall-btn" data-mid="' + msg.id + '" type="button" title="撤回该消息">撤回</button>') +
             '</div>' + body + '</div>';
         return item;
     }

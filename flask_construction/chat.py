@@ -475,17 +475,19 @@ def register_socketio(socketio):
         if not msg:
             _ack(False, '消息不存在')
             return
-        if msg.user_id != user.id:
+        is_admin = user.role == 'admin'
+        if msg.user_id != user.id and not is_admin:
             _ack(False, '只能撤回自己的消息')
             return
         if msg.recalled:
             _ack(False, '消息已撤回')
             return
-        from datetime import timedelta
-        diff = datetime.utcnow() - msg.created_at
-        if diff > timedelta(minutes=2):
-            _ack(False, '超过 2 分钟，无法撤回')
-            return
+        if not is_admin:
+            from datetime import timedelta
+            diff = datetime.utcnow() - msg.created_at
+            if diff > timedelta(minutes=2):
+                _ack(False, '超过 2 分钟，无法撤回')
+                return
 
         msg.recalled = True
         try:
