@@ -32,7 +32,7 @@ keepalive = 5
 # ---- 日志 ----
 accesslog = "logs/gunicorn_access.log"
 errorlog  = "logs/gunicorn_error.log"
-loglevel  = "debug"
+loglevel  = "info"
 
 # ---- 进程名 ----
 proc_name = "construction-gunicorn"

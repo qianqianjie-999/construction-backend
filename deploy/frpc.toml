@@ -10,7 +10,7 @@ server_port = 9300
 # 鉴权（token 必须和 frps 一样）
 [auth]
 method = "token"
-token = "your_secure_token"
+token = "6d913c20be358f20949878f45490fb783ad5466f6357d7182352388c81a5c8a6"
 
 # 传输协议
 [transport]
