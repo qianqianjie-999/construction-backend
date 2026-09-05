@@ -418,17 +418,19 @@
         if (isNaN(lat) || isNaN(lng)) {
             return '<div class="file-info"><div class="file-name">[定位消息解析失败]</div></div>';
         }
+        var text = loc.text || '';
         var addr = loc.address || '';
+        var title = text || addr || '位置共享';
         var coord = '纬度 ' + lat.toFixed(6) + ' · 经度 ' + lng.toFixed(6);
         return '<div class="loc-icon">📍</div>' +
             '<div class="file-info">' +
-            '<div class="file-name">' + escapeHtml(addr || '位置共享') + '</div>' +
+            '<div class="file-name">' + escapeHtml(title) + '</div>' +
             '<div class="file-meta">' + escapeHtml(coord) + '</div>' +
             '<a class="file-download" href="javascript:void(0)" data-nav-lat="' + lat + '" data-nav-lng="' + lng + '">🚗 导航</a>' +
             '</div>';
     }
 
-    // 点击定位卡片导航（高德 URI，coordinate=gps 自动做坐标系转换）
+    // 点击定位卡片导航（高德 URI，坐标已在前端转为 GCJ02，用默认 gaode）
     document.addEventListener('click', function (e) {
         var t = e.target;
         while (t && t !== document && !t.getAttribute('data-nav-lat')) t = t.parentElement;
@@ -436,7 +438,7 @@
             var lat = t.getAttribute('data-nav-lat');
             var lng = t.getAttribute('data-nav-lng');
             window.open('https://uri.amap.com/navigation?to=' + lng + ',' + lat +
-                '&coordinate=gps&mode=car', '_blank');
+                '&coordinate=gaode&mode=car', '_blank');
         }
     });
 
