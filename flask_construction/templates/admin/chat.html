@@ -150,6 +150,8 @@
         .file-meta { font-size: 12px; color: #64748b; }
         .file-download { color: #0ea5e9; text-decoration: none; }
         .file-download:hover { text-decoration: underline; }
+        .message-body.location { display: flex; align-items: center; gap: 10px; background: #eff6ff; border: 1px solid #bfdbfe; padding: 10px 14px; min-width: 240px; max-width: 420px; }
+        .loc-icon { width: 38px; height: 38px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; background: #dbeafe; }
 
         /* 发送栏 */
         .send-bar { display: flex; gap: 8px; align-items: center; background: white; padding: 12px 16px; border-radius: 8px; margin-top: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
@@ -252,6 +254,8 @@
                             <div class="label">📋 施工日志卡片</div>
                             <div class="meta">日志 ID: {{ msg.log_id }} · <a href="/admin/project/{{ project.id }}#log-{{ msg.log_id }}" style="color:#00d4ff">查看详情</a></div>
                         </div>
+                    {% elif msg.content_type == 'location' %}
+                        <div class="message-body location" data-loc="{{ msg.content }}"></div>
                     {% else %}
                         <div class="message-body text">{{ msg.content }}</div>
                     {% endif %}
@@ -406,6 +410,45 @@
         }
     });
 
+    // 定位卡片：content 为 JSON {"lat": 纬度, "lng": 经度, "address": 可选}
+    function locationCardHTML(loc) {
+        if (!loc) loc = {};
+        var lat = parseFloat(loc.lat);
+        var lng = parseFloat(loc.lng);
+        if (isNaN(lat) || isNaN(lng)) {
+            return '<div class="file-info"><div class="file-name">[定位消息解析失败]</div></div>';
+        }
+        var addr = loc.address || '';
+        var coord = '纬度 ' + lat.toFixed(6) + ' · 经度 ' + lng.toFixed(6);
+        return '<div class="loc-icon">📍</div>' +
+            '<div class="file-info">' +
+            '<div class="file-name">' + escapeHtml(addr || '位置共享') + '</div>' +
+            '<div class="file-meta">' + escapeHtml(coord) + '</div>' +
+            '<a class="file-download" href="javascript:void(0)" data-nav-lat="' + lat + '" data-nav-lng="' + lng + '">🚗 导航</a>' +
+            '</div>';
+    }
+
+    // 点击定位卡片导航（高德 URI，coordinate=gps 自动做坐标系转换）
+    document.addEventListener('click', function (e) {
+        var t = e.target;
+        while (t && t !== document && !t.getAttribute('data-nav-lat')) t = t.parentElement;
+        if (t && t.getAttribute('data-nav-lat')) {
+            var lat = t.getAttribute('data-nav-lat');
+            var lng = t.getAttribute('data-nav-lng');
+            window.open('https://uri.amap.com/navigation?to=' + lng + ',' + lat +
+                '&coordinate=gps&mode=car', '_blank');
+        }
+    });
+
+    // 渲染历史消息里的定位卡片
+    document.querySelectorAll('.message-body.location[data-loc]').forEach(function (el) {
+        try {
+            el.innerHTML = locationCardHTML(JSON.parse(el.dataset.loc));
+        } catch (e) {
+            el.innerHTML = '<div class="file-info"><div class="file-name">[定位消息解析失败]</div></div>';
+        }
+    });
+
     /* ============ 消息搜索（本地即时过滤 + 关键词高亮） ============ */
     var searchInput = document.getElementById('searchInput');
     var searchClear = document.getElementById('searchClear');
@@ -555,6 +598,10 @@
         } else if (msg.content_type === 'log_card') {
             body = '<div class="message-body log-card"><div class="label">📋 施工日志卡片</div>' +
                 '<div class="meta">日志 ID: ' + escapeHtml(msg.log_id) + '</div></div>';
+        } else if (msg.content_type === 'location') {
+            var loc = {};
+            try { loc = JSON.parse(msg.content || '{}'); } catch (e) {}
+            body = '<div class="message-body location">' + locationCardHTML(loc) + '</div>';
         } else {
             body = '<div class="message-body text">' + escapeHtml(msg.content) + '</div>';
         }

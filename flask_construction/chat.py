@@ -429,6 +429,10 @@ def register_socketio(socketio):
         if content_type == 'log_card' and not log_id:
             emit('error', {'message': 'log_id required'})
             return
+        if content_type == 'location' and not content:
+            # content 为 JSON 字符串：{"lat": 纬度, "lng": 经度, "address": 可选地址}
+            emit('error', {'message': 'location data required'})
+            return
 
         # 创建消息
         msg = Message(
