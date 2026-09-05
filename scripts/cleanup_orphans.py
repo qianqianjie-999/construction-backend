@@ -45,19 +45,20 @@ def collect_referenced(app):
             if row[0]:
                 referenced.add(row[0])
 
-        # 2) 聊天图片（content 即文件名）
+        # 2) 聊天图片（content 即文件名）——已撤回的不算引用，其文件视为孤儿可清理
         for row in (
             Message.query.with_entities(Message.content)
-            .filter(Message.content_type == 'image')
+            .filter(Message.content_type == 'image', Message.recalled.is_(False))
             .all()
         ):
             if row[0]:
                 referenced.add(row[0])
 
         # 3) 聊天文件（content 为 JSON：{"name":…, "path":服务器文件名, …}）
+        #    同样排除已撤回消息
         for row in (
             Message.query.with_entities(Message.content)
-            .filter(Message.content_type == 'file')
+            .filter(Message.content_type == 'file', Message.recalled.is_(False))
             .all()
         ):
             if not row[0]:
