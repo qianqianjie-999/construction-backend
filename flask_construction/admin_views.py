@@ -167,10 +167,10 @@ def download_chat_images(project_id):
     """一键下载项目所有聊天图片（打包 ZIP）"""
     project = Project.query.get_or_404(project_id)
 
-    # 查出所有图片类型的消息
+    # 查出所有图片类型的消息（已撤回的排除）
     image_msgs = (
         Message.query
-        .filter_by(project_id=project_id, content_type='image')
+        .filter_by(project_id=project_id, content_type='image', recalled=False)
         .order_by(Message.id.asc())
         .all()
     )

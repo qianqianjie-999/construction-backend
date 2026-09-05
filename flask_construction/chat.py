@@ -501,6 +501,27 @@ def register_socketio(socketio):
             _ack(False, f'保存失败: {e}')
             return
 
+        # 撤回图片/文件消息时删除磁盘文件，防止继续通过链接或打包下载
+        # （放在 commit 之后：若 commit 失败回滚，文件仍保留，状态一致）
+        if msg.content_type in ('image', 'file'):
+            fname = ''
+            if msg.content_type == 'image':
+                fname = msg.content or ''
+            else:  # file 消息 content 为 JSON 元信息，path 为存储文件名
+                try:
+                    import json as _json
+                    meta = _json.loads(msg.content or '{}')
+                    fname = (meta.get('path') or '')
+                except Exception:
+                    fname = ''
+            if fname:
+                fpath = os.path.join(current_app.config['UPLOAD_FOLDER'], fname)
+                try:
+                    if os.path.exists(fpath):
+                        os.remove(fpath)
+                except Exception as e:
+                    current_app.logger.warning(f'撤回删除文件失败 {fname}: {e}')
+
         emit('message_recalled', {'message_id': msg.id, 'project_id': msg.project_id},
              room=f'project_{msg.project_id}')
         _ack(True, '撤回成功')
