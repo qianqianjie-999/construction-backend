@@ -29,6 +29,10 @@ MAX_CHAT_IMAGE_SIZE = int(os.environ.get('MAX_CHAT_IMAGE_SIZE') or 2 * 1024 * 10
 # 服务端统一压缩：长边上限 + JPEG/WebP 质量（app 端聊天缩略查看足够，如需更清晰可调大）
 CHAT_IMAGE_MAX_EDGE = int(os.environ.get('CHAT_IMAGE_MAX_EDGE') or 1280)
 CHAT_IMAGE_QUALITY = int(os.environ.get('CHAT_IMAGE_QUALITY') or 80)
+# 聊天气泡缩略图：长边 400px / 质量 70，单张约 20~40KB（原图 200~400KB）
+CHAT_THUMB_MAX_EDGE = int(os.environ.get('CHAT_THUMB_MAX_EDGE') or 400)
+CHAT_THUMB_QUALITY = int(os.environ.get('CHAT_THUMB_QUALITY') or 70)
+THUMB_PREFIX = 'thumb_'
 
 # 图片魔数签名（文件头字节）
 IMAGE_SIGNATURES = {
@@ -101,6 +105,58 @@ def compress_chat_image(src_path, dst_path, max_edge=CHAT_IMAGE_MAX_EDGE, qualit
             im.save(dst_path, 'GIF', optimize=True)
         else:  # PNG 及其他：保持透明通道走 PNG optimize
             im.save(dst_path, 'PNG', optimize=True)
+
+
+def thumb_filename(filename):
+    """缩略图存储名：thumb_<原文件名>，与原图同目录"""
+    return f'{THUMB_PREFIX}{filename}'
+
+
+def ensure_thumbnail(upload_folder, filename):
+    """返回磁盘上一定存在的缩略图文件名；无法生成时返回 None（调用方回退原图）。
+
+    - 缩略图已存在直接复用（上传时预生成 + 首次访问按需生成，老图片无需迁移）
+    - 动图（GIF/WebP 动图）不生成缩略图，避免丢动画
+    - 写临时文件后 os.replace 原子替换，防止并发请求读到半截文件
+    """
+    tname = thumb_filename(filename)
+    tpath = os.path.join(upload_folder, tname)
+    if os.path.exists(tpath):
+        return tname
+    opath = os.path.join(upload_folder, filename)
+    if not os.path.exists(opath):
+        return None
+    tmp_path = None
+    try:
+        with Image.open(opath) as im:
+            if getattr(im, 'is_animated', False):
+                return None
+            fmt = (im.format or '').upper()
+            im = ImageOps.exif_transpose(im)
+            if max(im.size) > CHAT_THUMB_MAX_EDGE:
+                im.thumbnail((CHAT_THUMB_MAX_EDGE, CHAT_THUMB_MAX_EDGE), Image.LANCZOS)
+            tmp_path = os.path.join(upload_folder, f'.tmp_thumb_{uuid.uuid4().hex}')
+            if fmt in ('JPEG', 'MPO'):
+                if im.mode != 'RGB':
+                    im = im.convert('RGB')
+                im.save(tmp_path, 'JPEG', quality=CHAT_THUMB_QUALITY, optimize=True)
+            elif fmt == 'WEBP':
+                if im.mode not in ('RGB', 'RGBA'):
+                    im = im.convert('RGBA')
+                im.save(tmp_path, 'WEBP', quality=CHAT_THUMB_QUALITY)
+            elif fmt == 'GIF':
+                im.save(tmp_path, 'GIF', optimize=True)
+            else:  # PNG 等
+                im.save(tmp_path, 'PNG', optimize=True)
+        os.replace(tmp_path, tpath)
+        return tname
+    except (UnidentifiedImageError, OSError, ValueError):
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+        return None
 
 
 def get_current_user():
@@ -284,6 +340,11 @@ def upload_image():
             compress_chat_image(tmp_path, final_path)
         except (UnidentifiedImageError, OSError, ValueError):
             return jsonify({'error': 'image decode failed'}), 400
+        # 预生成气泡缩略图（失败不影响上传，首次访问缩略图路由时会按需再生）
+        try:
+            ensure_thumbnail(upload_folder, unique_filename)
+        except Exception:
+            current_app.logger.warning('预生成缩略图失败 %s', unique_filename, exc_info=True)
     finally:
         # 压缩已把内容写到 final_path；临时文件无论成败都清掉
         try:
@@ -306,6 +367,22 @@ def get_chat_image(filename):
         abort(404)
     resp = send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)
     # 文件名带时间戳且上传后不可变 -> 永久缓存，避免每次打开重复下载
+    resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    return resp
+
+
+@chat.route('/images/thumb/<filename>')
+def get_chat_image_thumb(filename):
+    """聊天气泡缩略图（公开访问）：不存在时按需生成并缓存；动图/生成失败回退原图。
+
+    老图片（本功能上线前上传）首次访问自动补生成，无需迁移脚本。
+    """
+    ref = Message.query.filter_by(content_type='image', content=filename).first()
+    if ref is not None and ref.recalled:
+        abort(404)
+    upload_folder = current_app.config['UPLOAD_FOLDER']
+    serve_name = ensure_thumbnail(upload_folder, filename) or filename
+    resp = send_from_directory(upload_folder, serve_name)
     resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
     return resp
 
@@ -558,6 +635,15 @@ def register_socketio(socketio):
                         os.remove(fpath)
                 except Exception as e:
                     current_app.logger.warning(f'撤回删除文件失败 {fname}: {e}')
+                # 图片消息联动清理缩略图，避免孤儿缓存
+                if msg.content_type == 'image':
+                    tpath = os.path.join(
+                        current_app.config['UPLOAD_FOLDER'], thumb_filename(fname))
+                    try:
+                        if os.path.exists(tpath):
+                            os.remove(tpath)
+                    except Exception as e:
+                        current_app.logger.warning(f'撤回删除缩略图失败 {fname}: {e}')
 
         emit('message_recalled', {'message_id': msg.id, 'project_id': msg.project_id},
              room=f'project_{msg.project_id}')
