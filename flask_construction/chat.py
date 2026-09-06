@@ -215,6 +215,29 @@ def mark_message_read(message_id):
     return jsonify({'message': 'marked as read'})
 
 
+@chat.route('/messages/read_all', methods=['POST'])
+@chat_login_required
+def mark_all_read():
+    """标记某项目群所有消息为已读（进入聊天页时调用，幂等）。
+    用 HTTP 而非 socket，避免 socket 未连上时已读标记丢失；
+    同时覆盖未分页加载的更早消息。"""
+    data = request.get_json(silent=True) or {}
+    project_id = data.get('project_id')
+    if not project_id:
+        return jsonify({'error': 'project_id is required'}), 400
+    user = request.current_user
+    already_read = db.session.query(MessageRead.message_id).filter_by(user_id=user.id)
+    unread = (Message.query
+              .filter(Message.project_id == project_id,
+                      Message.user_id != user.id,
+                      ~Message.id.in_(already_read))
+              .all())
+    for m in unread:
+        db.session.add(MessageRead(message_id=m.id, user_id=user.id))
+    db.session.commit()
+    return jsonify({'marked': len(unread)})
+
+
 @chat.route('/messages/unread_count', methods=['GET'])
 @chat_login_required
 def unread_count():
