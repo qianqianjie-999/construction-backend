@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/cover.png" width="720" alt="工程现场施工管理系统">
+
 # 🏗️ 工程现场施工管理系统
 
 ### 自部署 · 数据完全自主的施工日志 + 项目群聊一体化平台
