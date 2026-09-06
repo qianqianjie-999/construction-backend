@@ -1,27 +1,26 @@
 # ============================================================
-# frps.toml — 阿里云 rust_frp Server 配置（用户实际配置）
-# 实际路径: /opt/rust_frp/conf/frps.toml
-# 只需要把 allow_ports 改成下面这样，其他保持原样
+# frps.toml — 云服务器 rust_frp Server 配置示例
+# 部署位置示例：/opt/rust_frp/conf/frps.toml
 # ============================================================
 
 bind_addr = "0.0.0.0"
-bind_port = 9300
-work_conn_port = 10300
+bind_port = 9300          # frpc 回连端口（安全组放行）
+work_conn_port = 10300    # 数据传输端口（安全组放行）
 
 vhost_http_port = 9090
 vhost_https_port = 9091
 
-# ✅ 施工日志系统加 9304（和 ssh/its/arms 规律一致）
+# 允许 frpc 映射的端口白名单（按实际隧道规划）
 allow_ports = [
-    { single = 9301 },   # ssh
-    { single = 9302 },   # web_its
-    { single = 9303 },   # web_arms
-    { single = 9304 },   # construction  ← 新增！
+    { single = 9301 },   # 示例：ssh
+    { single = 19303 },  # 示例：其他业务（frp 内部端口）
+    { single = 19304 },  # 施工日志系统（frp 内部端口，Nginx 占用 9304 SSL）
 ]
 
 [auth]
 method = "token"
-token = "6d913c20be358f20949878f45490fb783ad5466f6357d7182352388c81a5c8a6"
+# 生成方法：openssl rand -hex 32，务必与所有 frpc 保持一致
+token = "REPLACE_WITH_RANDOM_TOKEN_openssl_rand_hex_32"
 
 [transport]
 protocol = "tcp"

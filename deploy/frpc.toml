@@ -1,16 +1,19 @@
 # ============================================================
-# frpc.toml — 内网 Rocky 9.6 frp Client（rust_frp 格式）
-# 必须与阿里云 frps.toml 完全对齐: server_port / auth / TLS
-# 完整链路: 内网 Flask:8082 → frpc → frps:9304 → 阿里云 Nginx:9304 ssl
+# frpc.toml — 内网 frp Client（rust_frp / frp 新版 TOML 格式）
+# 部署位置示例：内网服务器 /opt/rust_frp/conf/frpc.toml
+# 必须与云服务器 frps.toml 完全对齐: server_port / auth / TLS
+# 完整链路: 内网 gunicorn:8082 → frpc → frps(云) → 云 Nginx(SSL)
 # ============================================================
 
-server_addr = "123.57.86.80"
+# 云服务器公网 IP（部署时替换为你自己的）
+server_addr = "YOUR_CLOUD_SERVER_IP"
 server_port = 9300
 
-# 鉴权（token 必须和 frps 一样）
+# 鉴权（token 必须和 frps 一致）
+# 生成方法：openssl rand -hex 32
 [auth]
 method = "token"
-token = "6d913c20be358f20949878f45490fb783ad5466f6357d7182352388c81a5c8a6"
+token = "REPLACE_WITH_RANDOM_TOKEN_openssl_rand_hex_32"
 
 # 传输协议
 [transport]
@@ -26,13 +29,12 @@ log_level = "info"
 log_max_days = 7
 
 # ---------- 施工日志系统 ----------
-# 内网 Flask (gunicorn + gevent) 监听 8082
-# → frpc 映射到阿里云 9304
-# → 阿里云 Nginx listen 9304 ssl → proxy_pass 127.0.0.1:9304
+# 内网 gunicorn (gevent) 监听 8082 → frpc 映射到云服务器 19304
+# （19304 为 frp 内部端口，云 Nginx 监听 9304 SSL 反代到 127.0.0.1:19304）
 
 [[proxies]]
-name = "construction"
+name = "web_app"
 type = "tcp"
 local_ip = "127.0.0.1"
 local_port = 8082
-remote_port = 9304
+remote_port = 19304
