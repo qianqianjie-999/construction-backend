@@ -126,6 +126,23 @@ def create_project():
 
     return render_template('admin/create_project.html')
 
+@admin.route('/admin/project/<int:project_id>/edit', methods=['GET', 'POST'])
+@admin_login_required
+def edit_project(project_id):
+    """编辑项目信息（名称/工程地点/建设单位/项目经理）"""
+    project = Project.query.get_or_404(project_id)
+    if request.method == 'POST':
+        name = (request.form.get('name') or '').strip()
+        if not name:
+            return render_template('admin/edit_project.html', project=project, error='项目名称不能为空')
+        project.name = name
+        project.location = (request.form.get('location') or '').strip()
+        project.company = (request.form.get('company') or '').strip()
+        project.manager = (request.form.get('manager') or '').strip()
+        db.session.commit()
+        return redirect(url_for('admin.admin_dashboard'))
+    return render_template('admin/edit_project.html', project=project)
+
 @admin.route('/admin/project/<int:project_id>')
 @admin_login_required
 def project_detail(project_id):
