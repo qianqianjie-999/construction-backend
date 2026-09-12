@@ -74,12 +74,12 @@
 
 {% if logs %}
 {% for log in logs %}
-{% set is_last = loop.last %}
+{% set is_first = loop.first %}
 <div class="card animate-in" style="margin-bottom: 0.5rem; animation-delay: {{ loop.index * 0.05 }}s;">
     <div class="log-header" onclick="toggleLog(this)" style="cursor: pointer; user-select: none;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div style="display: flex; align-items: center; gap: 12px;">
-                <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color: var(--text-secondary); transition: transform 0.2s; flex-shrink: 0; {{ 'transform: rotate(90deg);' if is_last }}">
+                <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color: var(--text-secondary); transition: transform 0.2s; flex-shrink: 0; {{ 'transform: rotate(90deg);' if is_first }}">
                     <polyline points="9 18 15 12 9 6"></polyline>
                 </svg>
                 <h3 style="font-size: 1rem; font-weight: 700; color: var(--text-primary); margin: 0;">
@@ -108,7 +108,7 @@
         </div>
         {% endif %}
     </div>
-    <div class="log-body" style="{{ '' if is_last else 'display: none;' }}">
+    <div class="log-body" style="{{ '' if is_first else 'display: none;' }}">
         <div class="card-body">
             <!-- 天气/气温/风力/风向 -->
             <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 0.75rem;">
