@@ -229,6 +229,7 @@
         {% if messages %}
         <div class="messages-list">
             {% for msg in messages %}
+            {% if not msg.recalled %}
             {% set user = users.get(msg.user_id) %}
             <div class="message-item" data-mid="{{ msg.id }}">
                 <div class="avatar">
@@ -241,13 +242,9 @@
                         </span>
                         <span class="username">@{{ user.username if user else 'unknown' }}</span>
                         <span class="time">{{ msg.created_at | beijing_time }}</span>
-                        {% if not msg.recalled %}
                         <button class="recall-btn" data-mid="{{ msg.id }}" type="button" title="撤回该消息">撤回</button>
-                        {% endif %}
                     </div>
-                    {% if msg.recalled %}
-                        <div class="message-body text" style="color:#94a3b8;font-style:italic;">该消息已被撤回</div>
-                    {% elif msg.content_type == 'text' %}
+                    {% if msg.content_type == 'text' %}
                         <div class="message-body text">{{ msg.content }}</div>
                     {% elif msg.content_type == 'image' %}
                         <div class="message-body image">
@@ -267,6 +264,7 @@
                     {% endif %}
                 </div>
             </div>
+            {% endif %}
             {% endfor %}
         </div>
         {% else %}
@@ -339,16 +337,10 @@
         appendMessage(msg);
     });
     socket.on('message_recalled', function (data) {
+        // 与 App 端一致：撤回后整条消息直接移除，不留占位
         var item = document.querySelector('.message-item[data-mid="' + data.message_id + '"]');
-        if (item) {
-            var body = item.querySelector('.message-body');
-            if (body) {
-                body.innerHTML = '<span style="color:#94a3b8;font-style:italic;">该消息已被撤回</span>';
-                body.className = 'message-body text';
-            }
-            var rb = item.querySelector('.recall-btn');
-            if (rb) rb.remove();
-        }
+        if (item) item.remove();
+        if (searchInput && searchInput.value.trim()) applySearch();
     });
 
     // 撤回回执（管理员撤回成功/失败提示）
@@ -570,7 +562,9 @@
                     if (!arr || !arr.length) { loadMoreBtn.style.display = 'none'; return; }
                     var listEl = document.querySelector('.messages-list');
                     var frag = document.createDocumentFragment();
-                    arr.forEach(function (m) { frag.appendChild(renderItem(m)); });
+                    // 已撤回消息直接跳过（与 App 端一致），分页判断仍用原始条数
+                    arr.filter(function (m) { return !m.recalled; })
+                       .forEach(function (m) { frag.appendChild(renderItem(m)); });
                     listEl.insertBefore(frag, listEl.firstChild);
                     if (arr.length < 50) loadMoreBtn.style.display = 'none'; // 已经到最早
                     updateCountLabel();
@@ -592,11 +586,10 @@
     }
 
     function renderItem(msg) {
+        if (msg.recalled) return null; // 已撤回不渲染
         var nick = msg.nickname || msg.username || '未知用户';
         var body = '';
-        if (msg.recalled) {
-            body = '<div class="message-body text" style="color:#94a3b8;font-style:italic;">该消息已被撤回</div>';
-        } else if (msg.content_type === 'image') {
+        if (msg.content_type === 'image') {
             body = '<div class="message-body image"><img src="/api/chat/images/' +
                 encodeURIComponent(msg.content || '') + '" alt="图片消息" onclick="enlargeImage(this)"></div>';
         } else if (msg.content_type === 'file') {
@@ -622,18 +615,19 @@
             '<span class="nickname">' + escapeHtml(nick) + '</span>' +
             '<span class="username">@' + escapeHtml(msg.username || '') + '</span>' +
             '<span class="time">' + escapeHtml(String(msg.created_at || '').slice(11, 16)) + '</span>' +
-            (msg.recalled ? '' : '<button class="recall-btn" data-mid="' + msg.id + '" type="button" title="撤回该消息">撤回</button>') +
+            '<button class="recall-btn" data-mid="' + msg.id + '" type="button" title="撤回该消息">撤回</button>' +
             '</div>' + body + '</div>';
         return item;
     }
 
     function appendMessage(msg) {
+        var item = renderItem(msg);
+        if (!item) return; // 已撤回消息不渲染
         var list = document.querySelector('.messages-list');
         if (!list) return;
         var empty = list.querySelector('.empty');
-        if (empty) { list.innerHTML = ''; list = document.querySelector('.messages-list'); }
-        var item = renderItem(msg);
-        list.appendChild(item);
+        if (empty) { list.innerHTML = ''; }
+        document.querySelector('.messages-list').appendChild(item);
         item.scrollIntoView({ behavior: 'smooth', block: 'end' });
         if (searchInput && searchInput.value.trim()) applySearch(); // 搜索中：新消息同样套用过滤
     }

@@ -143,13 +143,15 @@ def project_chat(project_id):
     project = Project.query.get_or_404(project_id)
     INITIAL = 60
     base = Message.query.filter_by(project_id=project_id)
-    total = base.count()
+    # 已撤回消息不再展示（与 App 端一致）：列表与计数均排除
+    total = base.filter(Message.recalled.is_(False)).count()
     # 图片计数排除已撤回，与"一键下载所有图片"的实际可下载张数一致
     image_count = (
         base.filter(Message.content_type == 'image', Message.recalled.is_(False)).count()
     )
     messages = (
-        base.order_by(Message.id.desc()).limit(INITIAL).all()
+        base.filter(Message.recalled.is_(False))
+        .order_by(Message.id.desc()).limit(INITIAL).all()
     )
     messages.reverse()  # 转回时间升序展示
     # 预加载用户信息
