@@ -307,7 +307,7 @@
     }
 
     /* ============ 发送窗口（文本 + 文件） ============ */
-    var PROJECT_ID = {{ project.id }};
+    var PROJECT_ID = parseInt(document.querySelector('.container').dataset.projectId, 10);
     var socket = io({ withCredentials: true });
     var sendBtn = document.getElementById('sendBtn');
     var msgInput = document.getElementById('msgInput');
