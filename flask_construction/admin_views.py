@@ -543,3 +543,16 @@ def app_version_delete(ver_id):
     db.session.commit()
     flash(f'版本 {ver.version_name} 已删除', 'success')
     return redirect(url_for('admin.app_version_list'))
+
+
+@admin.route('/app/download')
+def app_download_page():
+    """公开下载页：供从未安装过 App 的用户下载最新版本 APK。
+
+    无需登录，访问 /app/download 即可看到最新发布版本和下载按钮。
+    """
+    latest = (AppVersion.query
+              .filter_by(is_published=True)
+              .order_by(AppVersion.version_code.desc())
+              .first())
+    return render_template('admin/app_download.html', version=latest)

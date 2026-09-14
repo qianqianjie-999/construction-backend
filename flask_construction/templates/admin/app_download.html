@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工程现场管理 - App 下载</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', -apple-system, sans-serif;
+            background: linear-gradient(135deg, #0a0f1a 0%, #1a2332 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: #f1f5f9;
+        }
+        .card {
+            background: #1a2332;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 480px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            border: 1px solid #2d3a4f;
+            text-align: center;
+        }
+        .icon {
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 20px;
+            background: linear-gradient(135deg, #00d4ff, #0099cc);
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 30px rgba(0,212,255,0.3);
+        }
+        .icon svg { width: 40px; height: 40px; color: #0a0f1a; }
+        h1 { font-size: 1.5rem; margin-bottom: 6px; }
+        .subtitle { color: #94a3b8; font-size: 0.9rem; margin-bottom: 28px; }
+        .info {
+            background: #0B1220;
+            border-radius: 12px;
+            padding: 16px;
+            text-align: left;
+            margin-bottom: 24px;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 0.9rem;
+        }
+        .info-row .label { color: #94a3b8; }
+        .info-row .value { color: #f1f5f9; font-weight: 600; }
+        .changelog {
+            text-align: left;
+            margin-bottom: 24px;
+            white-space: pre-line;
+            color: #cbd5e1;
+            font-size: 0.88rem;
+            line-height: 1.7;
+            background: #0B1220;
+            padding: 14px;
+            border-radius: 10px;
+        }
+        .changelog-title { color: #00d4ff; font-weight: 600; margin-bottom: 8px; display: block; }
+        .download-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #00d4ff, #0099cc);
+            color: #0a0f1a;
+            text-decoration: none;
+            border-radius: 12px;
+            font-size: 1.05rem;
+            font-weight: 700;
+            transition: transform 0.2s, box-shadow 0.2s;
+            border: none;
+            cursor: pointer;
+        }
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(0,212,255,0.4);
+        }
+        .download-btn svg { width: 22px; height: 22px; }
+        .disabled-btn {
+            width: 100%;
+            padding: 16px;
+            background: #334155;
+            color: #64748b;
+            border-radius: 12px;
+            font-size: 1.05rem;
+            font-weight: 600;
+            border: none;
+            cursor: not-allowed;
+        }
+        .tip {
+            margin-top: 18px;
+            font-size: 0.8rem;
+            color: #64748b;
+            line-height: 1.6;
+        }
+        .empty {
+            padding: 30px 0;
+            color: #64748b;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                <path d="M2 17l10 5 10-5"></path>
+                <path d="M2 12l10 5 10-5"></path>
+            </svg>
+        </div>
+        <h1>工程现场管理</h1>
+        <p class="subtitle">施工日志 · 项目协作 · 即时通讯</p>
+
+        {% if version %}
+        <div class="info">
+            <div class="info-row">
+                <span class="label">最新版本</span>
+                <span class="value">v{{ version.version_name }}</span>
+            </div>
+            <div class="info-row">
+                <span class="label">安装包大小</span>
+                <span class="value">{{ '%.1f'|format(version.apk_size / 1024 / 1024) if version.apk_size else 0 }} MB</span>
+            </div>
+            <div class="info-row">
+                <span class="label">发布时间</span>
+                <span class="value">{{ version.published_at.strftime('%Y-%m-%d') if version.published_at else '-' }}</span>
+            </div>
+        </div>
+
+        {% if version.changelog %}
+        <div class="changelog">
+            <span class="changelog-title">更新说明</span>
+{{ version.changelog }}
+        </div>
+        {% endif %}
+
+        <a href="/api/app/download/{{ version.apk_path }}" class="download-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            立即下载安装
+        </a>
+
+        <p class="tip">
+            下载后点击 APK 文件安装<br>
+            如提示"未知来源"，请在设置中允许安装
+        </p>
+        {% else %}
+        <div class="empty">
+            暂无可下载的版本
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
