@@ -90,11 +90,13 @@ def create_app(config_name=None):
     from flask_construction.admin_views import admin
     from flask_construction.auth import auth
     from flask_construction.chat import chat, register_socketio
+    from flask_construction.version_api import version_api
 
     app.register_blueprint(api, url_prefix='/api')
     app.register_blueprint(admin, url_prefix='')
     app.register_blueprint(auth, url_prefix='/api')
     app.register_blueprint(chat, url_prefix='/api/chat')
+    app.register_blueprint(version_api, url_prefix='/api')
 
     # 注册 SocketIO 事件
     register_socketio(socketio)

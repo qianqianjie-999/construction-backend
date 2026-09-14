@@ -150,3 +150,44 @@ class LoginAttempt(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     attempt_key = db.Column(db.String(128), nullable=False, index=True)
     failed_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
+class AppVersion(db.Model):
+    """App 版本信息，供客户端检查更新使用"""
+    __tablename__ = 'app_versions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    # 数字版本号（pubspec.yaml 的 version: x.y.z+code 中的 code），用于比较大小
+    version_code = db.Column(db.Integer, nullable=False, index=True)
+    # 可读版本名，如 "1.2.0"
+    version_name = db.Column(db.String(32), nullable=False)
+    # APK 在服务器上的相对路径（相对于 UPLOAD_FOLDER/app/）
+    apk_path = db.Column(db.String(255), nullable=False)
+    # APK 文件大小（字节）
+    apk_size = db.Column(db.BigInteger, default=0)
+    # 更新说明（换行分隔）
+    changelog = db.Column(db.Text, default='')
+    # 是否强制更新（客户端低于 min_version_code 时必须更新）
+    force_update = db.Column(db.Boolean, default=False)
+    # 支持的最低版本号，低于此版本的客户端必须更新
+    min_version_code = db.Column(db.Integer, default=1)
+    # 是否为当前发布版本（同一时刻只有一个 is_published=True）
+    is_published = db.Column(db.Boolean, default=False, index=True)
+    # 发布时间
+    published_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'version_code': self.version_code,
+            'version_name': self.version_name,
+            'apk_path': self.apk_path,
+            'apk_size': self.apk_size or 0,
+            'changelog': self.changelog or '',
+            'force_update': self.force_update,
+            'min_version_code': self.min_version_code,
+            'is_published': self.is_published,
+            'published_at': self.published_at.strftime('%Y-%m-%d %H:%M:%S') if self.published_at else None,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else None,
+        }

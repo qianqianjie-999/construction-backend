@@ -1,0 +1,140 @@
+{% extends "admin/base.html" %}
+{% block title %}App 版本管理 - 工程现场管理系统{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+            <path d="M2 17l10 5 10-5"></path>
+            <path d="M2 12l10 5 10-5"></path>
+        </svg>
+        App 版本管理
+    </h1>
+</div>
+
+<!-- 上传新版本 -->
+<div class="card" style="margin-bottom: 2rem;">
+    <div class="card-header">上传新版本</div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('admin.app_version_upload') }}" enctype="multipart/form-data">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label class="form-label required">APK 文件</label>
+                    <input type="file" name="apk" accept=".apk" required class="form-input" style="padding: 8px;">
+                </div>
+                <div class="form-group">
+                    <label class="form-label required">版本号（数字，递增）</label>
+                    <input type="number" name="version_code" required min="1" class="form-input"
+                           placeholder="如 12">
+                </div>
+                <div class="form-group">
+                    <label class="form-label required">版本名称</label>
+                    <input type="text" name="version_name" required class="form-input"
+                           placeholder="如 1.2.0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">最低支持版本号</label>
+                    <input type="number" name="min_version_code" value="1" min="1" class="form-input"
+                           placeholder="低于此版本强制更新">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">更新说明（每行一条）</label>
+                <textarea name="changelog" class="form-textarea" rows="4"
+                          placeholder="1. 修复断网无法进入项目&#10;2. 新增消息撤回"></textarea>
+            </div>
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" name="force_update">
+                    <span>强制更新（所有低于最低版本的用户必须更新后才能使用）</span>
+                </label>
+            </div>
+            <button type="submit" class="btn btn-primary">上传版本</button>
+        </form>
+    </div>
+</div>
+
+<!-- 版本列表 -->
+<div class="card">
+    <div class="card-header">版本列表（共 {{ versions|length }} 个）</div>
+    {% if versions %}
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>版本号</th>
+                    <th>版本名</th>
+                    <th>APK 大小</th>
+                    <th>强更</th>
+                    <th>最低版本</th>
+                    <th>状态</th>
+                    <th>发布时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in versions %}
+                <tr>
+                    <td><strong>{{ v.version_code }}</strong></td>
+                    <td>{{ v.version_name }}</td>
+                    <td>{{ '%.1f'|format(v.apk_size / 1024 / 1024) if v.apk_size else 0 }} MB</td>
+                    <td>
+                        {% if v.force_update %}
+                        <span class="badge badge-danger">是</span>
+                        {% else %}
+                        <span class="badge" style="color: var(--text-muted);">否</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ v.min_version_code }}</td>
+                    <td>
+                        {% if v.is_published %}
+                        <span class="badge badge-success">已发布</span>
+                        {% else %}
+                        <span class="badge" style="color: var(--text-muted);">未发布</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ v.published_at.strftime('%Y-%m-%d %H:%M') if v.published_at else '-' }}</td>
+                    <td>
+                        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                            {% if not v.is_published %}
+                            <form method="POST" action="{{ url_for('admin.app_version_publish', ver_id=v.id) }}" style="display:inline;">
+                                <button type="submit" class="btn btn-success" style="padding: 6px 12px; font-size: 0.8rem;">发布</button>
+                            </form>
+                            {% else %}
+                            <form method="POST" action="{{ url_for('admin.app_version_unpublish', ver_id=v.id) }}" style="display:inline;">
+                                <button type="submit" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.8rem;">取消发布</button>
+                            </form>
+                            {% endif %}
+                            <form method="POST" action="{{ url_for('admin.app_version_delete', ver_id=v.id) }}" style="display:inline;"
+                                  onsubmit="return confirm('确定删除版本 {{ v.version_name }}？此操作不可恢复。');">
+                                <button type="submit" class="btn btn-danger" style="padding: 6px 12px; font-size: 0.8rem;">删除</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% if v.changelog %}
+                <tr>
+                    <td colspan="8" style="padding: 8px 20px 16px; background: var(--bg-secondary);">
+                        <div style="color: var(--text-secondary); font-size: 0.85rem; white-space: pre-line;">
+                            <strong>更新说明：</strong>{{ v.changelog }}
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        <h3>暂无版本</h3>
+        <p>上传第一个 APK 版本开始管理</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

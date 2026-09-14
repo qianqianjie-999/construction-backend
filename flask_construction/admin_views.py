@@ -1,8 +1,9 @@
 from flask import Blueprint, render_template, request, send_file, current_app, redirect, url_for, session, flash
-from .models import db, Project, ConstructionLog, Message, User
+from .models import db, Project, ConstructionLog, Message, User, AppVersion
 from .utils.pdf_generator import generate_pdf_for_project
 from .auth import _too_many_attempts, _record_attempt, _clear_attempts
 from werkzeug.security import generate_password_hash
+from werkzeug.utils import secure_filename
 import os
 import io
 import zipfile
@@ -414,3 +415,131 @@ def delete_user(user_id):
     db.session.delete(user)
     db.session.commit()
     return redirect(url_for('admin.user_list'))
+
+
+# ===== App 版本管理 =====
+
+def _apk_dir():
+    d = os.path.join(current_app.config['UPLOAD_FOLDER'], 'app')
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+@admin.route('/admin/app-versions', methods=['GET'])
+@admin_login_required
+def app_version_list():
+    """App 版本管理页：列表 + 上传表单"""
+    versions = AppVersion.query.order_by(AppVersion.version_code.desc()).all()
+    return render_template('admin/app_versions.html', versions=versions)
+
+
+@admin.route('/admin/app-versions', methods=['POST'])
+@admin_login_required
+def app_version_upload():
+    """上传新版本 APK"""
+    if 'apk' not in request.files:
+        flash('请选择 APK 文件', 'error')
+        return redirect(url_for('admin.app_version_list'))
+
+    apk_file = request.files['apk']
+    if not apk_file or not apk_file.filename:
+        flash('请选择 APK 文件', 'error')
+        return redirect(url_for('admin.app_version_list'))
+
+    # 校验扩展名
+    if not apk_file.filename.lower().endswith('.apk'):
+        flash('仅支持 .apk 文件', 'error')
+        return redirect(url_for('admin.app_version_list'))
+
+    version_code = request.form.get('version_code', '').strip()
+    version_name = request.form.get('version_name', '').strip()
+    changelog = request.form.get('changelog', '').strip()
+    force_update = request.form.get('force_update') == 'on'
+    min_version_code = request.form.get('min_version_code', '1').strip()
+
+    # 校验
+    if not version_code.isdigit():
+        flash('版本号必须是正整数', 'error')
+        return redirect(url_for('admin.app_version_list'))
+    if not version_name:
+        flash('版本名称不能为空', 'error')
+        return redirect(url_for('admin.app_version_list'))
+    if not min_version_code.isdigit():
+        flash('最低支持版本必须是正整数', 'error')
+        return redirect(url_for('admin.app_version_list'))
+
+    version_code = int(version_code)
+    min_version_code = int(min_version_code)
+
+    # 同名 version_code 不能重复
+    if AppVersion.query.filter_by(version_code=version_code).first():
+        flash(f'版本号 {version_code} 已存在', 'error')
+        return redirect(url_for('admin.app_version_list'))
+
+    # 保存 APK 文件
+    safe_name = f"app-v{version_code}.apk"
+    apk_path = os.path.join(_apk_dir(), safe_name)
+    apk_file.save(apk_path)
+    apk_size = os.path.getsize(apk_path)
+
+    # 写入数据库（不自动发布，由管理员手动点"发布"）
+    ver = AppVersion(
+        version_code=version_code,
+        version_name=version_name,
+        apk_path=safe_name,
+        apk_size=apk_size,
+        changelog=changelog,
+        force_update=force_update,
+        min_version_code=min_version_code,
+        is_published=False,
+    )
+    db.session.add(ver)
+    db.session.commit()
+
+    flash(f'版本 {version_name} 上传成功，点击"发布"后客户端可检测到更新', 'success')
+    return redirect(url_for('admin.app_version_list'))
+
+
+@admin.route('/admin/app-versions/<int:ver_id>/publish', methods=['POST'])
+@admin_login_required
+def app_version_publish(ver_id):
+    """发布某个版本：设为当前发布版本，其它版本取消发布"""
+    ver = AppVersion.query.get_or_404(ver_id)
+
+    # 取消所有已发布版本
+    AppVersion.query.filter_by(is_published=True).update({'is_published': False, 'published_at': None})
+
+    # 发布当前版本
+    ver.is_published = True
+    ver.published_at = datetime.utcnow()
+    db.session.commit()
+
+    flash(f'版本 {ver.version_name} 已发布，客户端现在可检测到更新', 'success')
+    return redirect(url_for('admin.app_version_list'))
+
+
+@admin.route('/admin/app-versions/<int:ver_id>/unpublish', methods=['POST'])
+@admin_login_required
+def app_version_unpublish(ver_id):
+    """取消发布某个版本"""
+    ver = AppVersion.query.get_or_404(ver_id)
+    ver.is_published = False
+    ver.published_at = None
+    db.session.commit()
+    flash(f'版本 {ver.version_name} 已取消发布', 'success')
+    return redirect(url_for('admin.app_version_list'))
+
+
+@admin.route('/admin/app-versions/<int:ver_id>/delete', methods=['POST'])
+@admin_login_required
+def app_version_delete(ver_id):
+    """删除某个版本（连同 APK 文件）"""
+    ver = AppVersion.query.get_or_404(ver_id)
+    # 删除磁盘上的 APK
+    apk_path = os.path.join(_apk_dir(), ver.apk_path)
+    if os.path.isfile(apk_path):
+        os.remove(apk_path)
+    db.session.delete(ver)
+    db.session.commit()
+    flash(f'版本 {ver.version_name} 已删除', 'success')
+    return redirect(url_for('admin.app_version_list'))
