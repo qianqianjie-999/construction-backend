@@ -203,7 +203,7 @@
         </div>
     </div>
 
-    <div class="container">
+    <div class="container" data-project-id="{{ project.id }}" data-total="{{ total }}" data-image-count="{{ image_count }}">
         <div class="toolbar">
             <div class="title">所有消息</div>
             <div class="search-wrap">
@@ -540,7 +540,7 @@
 
     /* ============ 加载更早消息（before_id 分页） ============ */
     var loadMoreBtn = document.getElementById('loadMoreBtn');
-    var TOTAL = {{ total }};
+    var TOTAL = parseInt(document.querySelector('.container').dataset.total, 10);
     if (loadMoreBtn) {
         var shownNow = document.querySelectorAll('.message-item').length;
         if (TOTAL <= shownNow) loadMoreBtn.style.display = 'none';
@@ -582,7 +582,7 @@
     function updateCountLabel() {
         if (!msgCountEl) return;
         var shown = document.querySelectorAll('.message-item').length;
-        msgCountEl.textContent = '共 ' + TOTAL + ' 条 · 已显示 ' + shown + ' 条 · 图片 {{ image_count }} 张';
+        msgCountEl.textContent = '共 ' + TOTAL + ' 条 · 已显示 ' + shown + ' 条 · 图片 ' + document.querySelector('.container').dataset.imageCount + ' 张';
     }
 
     function renderItem(msg) {
