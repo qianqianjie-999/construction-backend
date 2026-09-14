@@ -1,4 +1,5 @@
 import os
+import sys
 from dotenv import load_dotenv
 
 # 加载环境变量
@@ -34,6 +35,26 @@ def _get_secret_key():
     return key
 
 
+def _get_database_url(default_for_dev=None):
+    """获取数据库连接串。
+
+    生产环境必须通过 DATABASE_URL 环境变量注入；未设置则启动失败，
+    杜绝把明文密码硬编码在仓库里。
+    开发环境允许回退到 default_for_dev（仅本机调试用）。
+    """
+    url = os.environ.get('DATABASE_URL')
+    if url:
+        return url
+    if default_for_dev:
+        return default_for_dev
+    sys.stderr.write(
+        '[FATAL] 未设置 DATABASE_URL 环境变量。\n'
+        '        请在 .env 或环境变量中配置数据库连接串，例如：\n'
+        '        DATABASE_URL=mysql+pymysql://user:password@localhost/db?charset=utf8mb4\n'
+    )
+    sys.exit(1)
+
+
 class Config:
     """基础配置"""
     SECRET_KEY = _get_secret_key()
@@ -65,8 +86,10 @@ class DevelopmentConfig(Config):
     """开发环境配置"""
     DEBUG = True
     SOCKETIO_ASYNC_MODE = 'threading'
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
-        'mysql+pymysql://construction_user:construction123@localhost/construction?charset=utf8mb4'
+    # 开发环境允许回退到本机默认库（仅本机调试，不含真实密码）
+    SQLALCHEMY_DATABASE_URI = _get_database_url(
+        default_for_dev='sqlite:///construction_dev.db'
+    )
 
 
 class ProductionConfig(Config):
@@ -75,8 +98,8 @@ class ProductionConfig(Config):
     # gunicorn -k gevent 启动时 gevent 已 patch 所有标准库，
     # 硬编码 None 让 engineio 自动检测到 gevent（最稳妥，不读 .env 避免被 eventlet 等坑）
     SOCKETIO_ASYNC_MODE = None
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
-        'mysql+pymysql://construction_user:construction123@localhost/construction?charset=utf8mb4'
+    # 生产环境强制从环境变量读取，不提供任何默认密码
+    SQLALCHEMY_DATABASE_URI = _get_database_url()
 
     @classmethod
     def init_app(cls, app):

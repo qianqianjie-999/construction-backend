@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, session, current_app, send_from_directory, abort
+from flask import Blueprint, request, jsonify, session, current_app, send_from_directory, abort, g
 from sqlalchemy import or_
 from sqlalchemy.orm import selectinload
 from werkzeug.utils import secure_filename
@@ -8,8 +8,15 @@ import os
 import uuid
 from functools import wraps
 from PIL import Image, ImageOps, UnidentifiedImageError
+import time
+from collections import defaultdict
 
 chat = Blueprint('chat', __name__)
+
+# 消息发送频率限制：单用户每分钟最多 60 条（防刷屏/恶意轰炸）
+MSG_RATE_LIMIT = 60
+MSG_RATE_WINDOW = 60  # 秒
+_msg_timestamps = defaultdict(list)  # {user_id: [ts, ts, ...]}
 
 ALLOWED_IMG_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
@@ -73,6 +80,25 @@ def validate_image(file_storage):
     head = file_storage.stream.read(32)
     file_storage.stream.seek(0)
     return sniff_image_type(head) is not None
+
+
+# 可执行/脚本类文件头魔数（无论什么扩展名都拒绝上传，防改后缀绕过白名单）
+DANGEROUS_HEADERS = (
+    b'MZ',           # Windows PE/DLL
+    b'\x7fELF',      # Linux ELF
+    b'#!',           # Unix shebang 脚本
+    b'MZ\x90\x00',   # PE 精确头
+)
+
+
+def validate_file_content(file_storage):
+    """校验文件内容是否含可执行/脚本魔数（防改后缀上传 exe/elf/脚本）"""
+    head = file_storage.stream.read(16)
+    file_storage.stream.seek(0)
+    for sig in DANGEROUS_HEADERS:
+        if head.startswith(sig):
+            return False
+    return True
 
 
 def compress_chat_image(src_path, dst_path, max_edge=CHAT_IMAGE_MAX_EDGE, quality=CHAT_IMAGE_QUALITY):
@@ -175,7 +201,7 @@ def chat_login_required(f):
         user = get_current_user()
         if not user:
             return jsonify({'error': 'Authentication required'}), 401
-        request.current_user = user
+        g.current_user = user
         return f(*args, **kwargs)
     return decorated
 
@@ -191,7 +217,7 @@ def get_messages():
     around_id = request.args.get('around_id', type=int)
     before_id = request.args.get('before_id', type=int)
     limit = min(request.args.get('limit', default=30, type=int), 100)
-    user_id = request.current_user.id
+    user_id = g.current_user.id
 
     if around_id:
         # 上下文窗口：以目标消息为中心，向前 half 条 + 本身 + 向后 half 条，时间升序
@@ -250,7 +276,7 @@ def search_messages():
     total = query.count()
     msgs = query.order_by(Message.id.desc()).limit(limit).all()
 
-    user_id = request.current_user.id
+    user_id = g.current_user.id
     return jsonify({
         'total': total,
         'items': [m.to_dict(current_user_id=user_id) for m in msgs],
@@ -262,7 +288,7 @@ def search_messages():
 def mark_message_read(message_id):
     """标记消息已读"""
     msg = Message.query.get_or_404(message_id)
-    user = request.current_user
+    user = g.current_user
     existing = MessageRead.query.filter_by(message_id=msg.id, user_id=user.id).first()
     if not existing:
         read = MessageRead(message_id=msg.id, user_id=user.id)
@@ -281,7 +307,7 @@ def mark_all_read():
     project_id = data.get('project_id')
     if not project_id:
         return jsonify({'error': 'project_id is required'}), 400
-    user = request.current_user
+    user = g.current_user
     already_read = db.session.query(MessageRead.message_id).filter_by(user_id=user.id)
     unread = (Message.query
               .filter(Message.project_id == project_id,
@@ -298,7 +324,7 @@ def mark_all_read():
 @chat_login_required
 def unread_count():
     """获取用户在所有项目群的未读消息数"""
-    user = request.current_user
+    user = g.current_user
     counts = (
         db.session.query(Message.project_id, db.func.count(Message.id))
         .outerjoin(MessageRead, db.and_(MessageRead.message_id == Message.id, MessageRead.user_id == user.id))
@@ -400,6 +426,10 @@ def upload_file():
     ext = allowed_file_ext(f.filename)
     if not ext:
         return jsonify({'error': f'unsupported file type: .{f.filename.rsplit(".", 1)[-1].lower()}'}), 400
+
+    # 内容魔数校验：拒绝伪装成文档的可执行文件/脚本（防改后缀绕过白名单）
+    if not validate_file_content(f):
+        return jsonify({'error': 'file content blocked (executable/script signature detected)'}), 400
 
     # 原始文件名只保留文件名部分（不带路径），保存名不含原名，避免中文/特殊字符问题
     orig_name = os.path.basename(f.filename.replace('\\', '/'))
@@ -517,10 +547,24 @@ def register_socketio(socketio):
             emit('error', {'message': 'not authenticated'})
             return
 
+        # 频率限制：清理窗口外记录后判断是否超限
+        now = time.time()
+        bucket = [t for t in _msg_timestamps[user.id] if now - t < MSG_RATE_WINDOW]
+        _msg_timestamps[user.id] = bucket
+        if len(bucket) >= MSG_RATE_LIMIT:
+            emit('error', {'message': f'发送过于频繁，请 {MSG_RATE_WINDOW} 秒后再试'})
+            return
+        bucket.append(now)
+
         project_id = data.get('project_id')
         content_type = data.get('content_type', 'text')
-        content = data.get('content', '').strip()
+        content = data.get('content', '').strip() if isinstance(data.get('content'), str) else ''
         log_id = data.get('log_id')
+
+        # 文本消息长度上限 5000 字，防止单条消息过大
+        if content_type == 'text' and len(content) > 5000:
+            emit('error', {'message': '消息过长（最多 5000 字）'})
+            return
 
         # 校验
         if not project_id:

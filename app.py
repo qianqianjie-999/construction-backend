@@ -1,4 +1,4 @@
-from flask import Flask, session, redirect, url_for
+from flask import Flask, session, redirect, url_for, request
 from flask_cors import CORS
 from flask_socketio import SocketIO
 from flask_construction.models import db
@@ -30,6 +30,22 @@ def _ensure_project_sort_column(app):
                 app.logger.info('projects 表已自动补充 sort_order 列')
         except Exception as e:
             app.logger.warning(f'检查/补充 projects.sort_order 列失败: {e}')
+
+
+def _ensure_login_attempts_table(app):
+    """轻量迁移：确保 login_attempts 表存在（登录限流计数，跨 worker 共享）。
+
+    db.create_all() 只创建不存在的表，已有库缺少此表时靠这里补建。
+    """
+    from sqlalchemy import inspect
+    with app.app_context():
+        try:
+            insp = inspect(db.engine)
+            if not insp.has_table('login_attempts'):
+                db.create_all()
+                app.logger.info('login_attempts 表已自动创建')
+        except Exception as e:
+            app.logger.warning(f'检查/创建 login_attempts 表失败: {e}')
 
 
 def create_app(config_name=None):
@@ -83,6 +99,21 @@ def create_app(config_name=None):
     # 注册 SocketIO 事件
     register_socketio(socketio)
 
+    # 统一安全响应头：防点击劫持、防 MIME 嗅探、禁止缓存敏感数据
+    @app.after_request
+    def add_security_headers(response):
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
+        # 仅对 API 响应禁止缓存（管理后台页面仍可正常缓存静态资源）
+        if request.path.startswith('/api/'):
+            response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+        return response
+
     # Jinja2 过滤器：把 naive UTC datetime 转北京时间（统一走 utils.timeutil）
     from flask_construction.utils.timeutil import fmt_beijing
 
@@ -97,6 +128,7 @@ def create_app(config_name=None):
 
     # 启动时自动补列（幂等）
     _ensure_project_sort_column(app)
+    _ensure_login_attempts_table(app)
 
     return app
 
@@ -111,13 +143,21 @@ if __name__ == '__main__':
 
         # 创建默认管理员账户（如果不存在）
         from flask_construction.models import User
+        import secrets
         admin_user = User.query.filter_by(username='admin').first()
         if not admin_user:
+            # 首次部署随机生成密码，仅打印一次，杜绝仓库里有已知弱口令
+            initial_pwd = secrets.token_urlsafe(12)
             admin_user = User(username='admin', nickname='管理员', role='admin')
-            admin_user.set_password('admin123')
+            admin_user.set_password(initial_pwd)
             db.session.add(admin_user)
             db.session.commit()
-            print('默认管理员账户已创建：admin / admin123')
+            print('=' * 60)
+            print('首次部署：默认管理员账户已创建')
+            print(f'  用户名: admin')
+            print(f'  初始密码: {initial_pwd}')
+            print('  请妥善保存并尽快在管理后台修改密码！')
+            print('=' * 60)
 
     # 启动应用（socketio.run 会自动用 eventlet/gevent，如果不可用则 fallback 到 threading）
     socketio.run(

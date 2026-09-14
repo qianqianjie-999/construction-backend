@@ -137,3 +137,16 @@ class MessageRead(db.Model):
     read_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     __table_args__ = (db.UniqueConstraint('message_id', 'user_id', name='_message_user_uc'),)
+
+
+class LoginAttempt(db.Model):
+    """登录失败计数（跨 gunicorn worker 共享，防暴力破解）
+
+    同一 key（ip:username）在窗口内失败次数超限时拒绝登录。
+    登录成功或窗口过期后记录自动清理。
+    """
+    __tablename__ = 'login_attempts'
+
+    id = db.Column(db.Integer, primary_key=True)
+    attempt_key = db.Column(db.String(128), nullable=False, index=True)
+    failed_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)

@@ -1,33 +1,32 @@
 from flask import Blueprint, render_template, request, send_file, current_app, redirect, url_for, session, flash
 from .models import db, Project, ConstructionLog, Message, User
 from .utils.pdf_generator import generate_pdf_for_project
+from .auth import _too_many_attempts, _record_attempt, _clear_attempts
 from werkzeug.security import generate_password_hash
 import os
 import io
-import time
 import zipfile
-from collections import defaultdict
 from datetime import datetime
 
 # 创建管理后台蓝图
 admin = Blueprint('admin', __name__, template_folder='templates')
 
-# ===== 管理后台登录限流（防暴力破解）=====
-# 内存计数：{ ip: [时间戳, ...] }；/api/login 已有同类限流，这里补上后台表单登录口
-_admin_login_attempts = defaultdict(list)
-ADMIN_MAX_ATTEMPTS = 5       # 最大失败次数
-ADMIN_WINDOW_SECONDS = 300   # 统计窗口（秒）
+# 管理后台登录限流：复用 auth.py 的 DB 持久化计数（跨 worker 生效），
+# key 加 admin: 前缀与 API 登录口区分
+ADMIN_MAX_ATTEMPTS = 5
+ADMIN_WINDOW_SECONDS = 300
 
 
 def _admin_too_many(ip):
-    now = time.time()
-    attempts = [t for t in _admin_login_attempts[ip] if now - t < ADMIN_WINDOW_SECONDS]
-    _admin_login_attempts[ip] = attempts
-    return len(attempts) >= ADMIN_MAX_ATTEMPTS
+    return _too_many_attempts(f'admin:{ip}')
 
 
 def _admin_record_attempt(ip):
-    _admin_login_attempts[ip].append(time.time())
+    _record_attempt(f'admin:{ip}')
+
+
+def _admin_clear_attempts(ip):
+    _clear_attempts(f'admin:{ip}')
 
 
 def admin_login_required(f):
@@ -58,7 +57,7 @@ def admin_login():
         password = request.form.get('password', '')
         user = User.query.filter_by(username=username).first()
         if user and user.check_password(password) and user.role == 'admin':
-            _admin_login_attempts.pop(client_ip, None)  # 成功则清空该 IP 计数
+            _admin_clear_attempts(client_ip)  # 成功则清空该 IP 计数
             session['user_id'] = user.id
             session['username'] = user.username
             return redirect(url_for('admin.admin_dashboard'))

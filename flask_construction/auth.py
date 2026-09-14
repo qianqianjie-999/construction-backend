@@ -1,30 +1,42 @@
 from functools import wraps
-from flask import Blueprint, request, jsonify, session, current_app
+from datetime import datetime, timedelta
+from flask import Blueprint, request, jsonify, session, current_app, g
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-from .models import User, db
-import time
-from collections import defaultdict
+from .models import User, db, LoginAttempt
 
 auth = Blueprint('auth', __name__)
 
-# ===== 登录限流（防暴力破解）=====
-# 内存计数：{ key: [时间戳, ...] }，key 为 ip:username
-_login_attempts = defaultdict(list)
+# ===== 登录限流（防暴力破解，跨 gunicorn worker 共享）=====
 LOGIN_MAX_ATTEMPTS = 5       # 最大失败次数
 LOGIN_WINDOW_SECONDS = 300   # 统计窗口（秒）
 
 
 def _too_many_attempts(key):
-    """判断该 key 在窗口内是否超过失败次数上限"""
-    now = time.time()
-    # 清理窗口外的旧记录
-    attempts = [t for t in _login_attempts[key] if now - t < LOGIN_WINDOW_SECONDS]
-    _login_attempts[key] = attempts
-    return len(attempts) >= LOGIN_MAX_ATTEMPTS
+    """判断该 key 在窗口内是否超过失败次数上限（查数据库，跨 worker 生效）"""
+    cutoff = datetime.utcnow() - timedelta(seconds=LOGIN_WINDOW_SECONDS)
+    # 顺便清理窗口外的旧记录
+    LoginAttempt.query.filter(
+        LoginAttempt.attempt_key == key,
+        LoginAttempt.failed_at < cutoff
+    ).delete(synchronize_session=False)
+    db.session.commit()
+    count = LoginAttempt.query.filter(
+        LoginAttempt.attempt_key == key,
+        LoginAttempt.failed_at >= cutoff
+    ).count()
+    return count >= LOGIN_MAX_ATTEMPTS
 
 
 def _record_attempt(key):
-    _login_attempts[key].append(time.time())
+    """记录一次失败"""
+    db.session.add(LoginAttempt(attempt_key=key))
+    db.session.commit()
+
+
+def _clear_attempts(key):
+    """登录成功后清空该 key 的失败计数"""
+    LoginAttempt.query.filter_by(attempt_key=key).delete(synchronize_session=False)
+    db.session.commit()
 
 
 def _serializer():
@@ -70,7 +82,7 @@ def login_required(f):
         user = get_current_user()
         if not user:
             return jsonify({'error': 'Authentication required'}), 401
-        request.current_user = user
+        g.current_user = user
         return f(*args, **kwargs)
     return decorated_function
 
@@ -84,7 +96,7 @@ def admin_required(f):
             return jsonify({'error': 'Authentication required'}), 401
         if user.role != 'admin':
             return jsonify({'error': 'Admin access required'}), 403
-        request.current_user = user
+        g.current_user = user
         return f(*args, **kwargs)
     return decorated_function
 
@@ -108,7 +120,7 @@ def login():
     user = User.query.filter_by(username=username).first()
     if user and user.check_password(password):
         # 登录成功，清空该 key 的失败计数
-        _login_attempts.pop(attempt_key, None)
+        _clear_attempts(attempt_key)
         session['user_id'] = user.id
         session['username'] = user.username
         return jsonify({
@@ -136,7 +148,7 @@ def logout():
 @login_required
 def get_current_user_info():
     """获取当前用户信息"""
-    return jsonify(request.current_user.to_dict())
+    return jsonify(g.current_user.to_dict())
 
 
 @auth.route('/register', methods=['POST'])
