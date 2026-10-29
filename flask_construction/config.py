@@ -73,8 +73,10 @@ class Config:
     DEBUG = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
 
     # ---- CORS ----
-    # 允许的 origin，多个用逗号分隔，* 表示全部允许（内网+frp 场景推荐 *）
-    CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '*')
+    # 允许的 origin，多个用逗号分隔。生产环境必须配置明确来源。
+    CORS_ORIGINS = os.environ.get('CORS_ORIGINS', 'http://localhost:5173')
+    # 公网根地址：生成给旧版 App 的绝对媒体 URL 时使用。
+    PUBLIC_BASE_URL = os.environ.get('PUBLIC_BASE_URL', '').rstrip('/')
 
     # ---- Socket.IO ----
     # async_mode: threading(默认/开发) / eventlet(生产推荐) / gevent

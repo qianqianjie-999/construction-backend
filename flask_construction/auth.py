@@ -62,16 +62,28 @@ def _decode_token(token):
 
 
 def get_current_user():
-    """从 session 或 Bearer token 获取当前用户"""
+    """从 session 或 Bearer token 获取当前用户（已禁用账号视为未登录）"""
     if 'user_id' in session:
-        return User.query.get(session['user_id'])
+        user = User.query.get(session['user_id'])
+        if user and user.is_active:
+            return user
+        # 账号已删除或被禁用：直接清退 session，阻止继续访问
+        session.pop('user_id', None)
+        session.pop('username', None)
+        return None
     token = request.headers.get('Authorization')
+    if not token:
+        query_token = request.args.get('token')
+        if query_token:
+            token = f'Bearer {query_token}'
     if token and token.startswith('Bearer '):
         raw = token[7:].strip()
         # 仅接受签名 token，杜绝明文 user_id 伪造
         user_id = _decode_token(raw)
         if user_id is not None:
-            return User.query.get(user_id)
+            user = User.query.get(user_id)
+            if user and user.is_active:
+                return user
     return None
 
 
@@ -85,6 +97,24 @@ def login_required(f):
         g.current_user = user
         return f(*args, **kwargs)
     return decorated_function
+
+
+def media_required(scope):
+    """Allow authenticated requests or a time-limited signed media URL."""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            from .media_signing import valid_media_signature
+
+            user = get_current_user()
+            filename = kwargs.get('filename', '')
+            if not user and not valid_media_signature(scope, filename):
+                return jsonify({'error': 'Authentication required'}), 401
+            if user:
+                g.current_user = user
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
 
 
 def admin_required(f):
@@ -119,6 +149,9 @@ def login():
 
     user = User.query.filter_by(username=username).first()
     if user and user.check_password(password):
+        # 已禁用的账号不允许登录
+        if not user.is_active:
+            return jsonify({'error': 'Account disabled'}), 403
         # 登录成功，清空该 key 的失败计数
         _clear_attempts(attempt_key)
         session['user_id'] = user.id
@@ -204,6 +237,12 @@ def update_user(user_id):
         if data['role'] not in ('admin', 'user'):
             return jsonify({'error': 'Invalid role'}), 400
         user.role = data['role']
+
+    if 'is_active' in data:
+        is_active = bool(data['is_active'])
+        if not is_active and user.username == 'admin':
+            return jsonify({'error': 'Cannot disable the admin account'}), 400
+        user.is_active = is_active
 
     db.session.commit()
     return jsonify(user.to_dict())

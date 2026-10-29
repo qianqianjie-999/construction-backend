@@ -48,6 +48,29 @@ def _ensure_login_attempts_table(app):
             app.logger.warning(f'检查/创建 login_attempts 表失败: {e}')
 
 
+def _ensure_user_is_active_column(app):
+    """轻量迁移：users 表补 is_active 列（账号启用/禁用）。
+
+    db.create_all() 不会给已存在的表加新列，生产库（MySQL）靠这里在启动时自动补列，
+    幂等可重复执行。
+    """
+    from sqlalchemy import inspect, text
+    with app.app_context():
+        try:
+            insp = inspect(db.engine)
+            if not insp.has_table('users'):
+                return
+            cols = [c['name'] for c in insp.get_columns('users')]
+            if 'is_active' not in cols:
+                with db.engine.begin() as conn:
+                    conn.execute(text(
+                        'ALTER TABLE users ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1'
+                    ))
+                app.logger.info('users 表已自动补充 is_active 列')
+        except Exception as e:
+            app.logger.warning(f'检查/补充 users.is_active 列失败: {e}')
+
+
 def create_app(config_name=None):
     if config_name is None:
         config_name = os.environ.get('FLASK_CONFIG', 'default')
@@ -58,7 +81,7 @@ def create_app(config_name=None):
     app.config.from_object(config[config_name])
 
     # 解析 CORS origins（支持逗号分隔）
-    raw_origins = app.config.get('CORS_ORIGINS', '*')
+    raw_origins = app.config.get('CORS_ORIGINS', 'http://localhost:5173')
     if raw_origins == '*':
         cors_origins = '*'
     else:
@@ -76,7 +99,10 @@ def create_app(config_name=None):
     db.init_app(app)
 
     # 初始化 SocketIO
-    socketio.cors_allowed_origins = app.config.get('SOCKETIO_CORS_ORIGINS', '*')
+    socketio.cors_allowed_origins = app.config.get(
+        'SOCKETIO_CORS_ORIGINS',
+        'http://localhost:5173',
+    )
     # async_mode=None 表示让 engineio 自动检测（gevent/eventlet/threading），
     # 显式传 None 新版会报 "Invalid async_mode"，所以只有有值时才传参数
     async_mode = app.config.get('SOCKETIO_ASYNC_MODE')
@@ -109,6 +135,17 @@ def create_app(config_name=None):
         response.headers['X-XSS-Protection'] = '1; mode=block'
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
+        response.headers['Content-Security-Policy'] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "font-src 'self' data:; "
+            "connect-src 'self'; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "frame-ancestors 'none'"
+        )
         # 仅对 API 响应禁止缓存（管理后台页面仍可正常缓存静态资源）
         if request.path.startswith('/api/'):
             response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
@@ -131,6 +168,7 @@ def create_app(config_name=None):
     # 启动时自动补列（幂等）
     _ensure_project_sort_column(app)
     _ensure_login_attempts_table(app)
+    _ensure_user_is_active_column(app)
 
     return app
 

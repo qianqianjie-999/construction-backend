@@ -3,6 +3,8 @@ from sqlalchemy import or_
 from sqlalchemy.orm import selectinload
 from werkzeug.utils import secure_filename
 from .models import db, User, Project, Message, MessageRead, ConstructionLog
+from .auth import media_required
+from .media_signing import signed_media_url
 from datetime import datetime
 import os
 import uuid
@@ -186,10 +188,15 @@ def ensure_thumbnail(upload_folder, filename):
 
 
 def get_current_user():
-    """从 session 或 token 获取当前用户"""
+    """从 session 或 token 获取当前用户（已禁用账号视为未登录）"""
     # 1) session
     if 'user_id' in session:
-        return User.query.get(session['user_id'])
+        user = User.query.get(session['user_id'])
+        if user and user.is_active:
+            return user
+        session.pop('user_id', None)
+        session.pop('username', None)
+        return None
     # 2) Authorization: Bearer <token>（签名 token，与 auth.py 保持一致）
     from .auth import get_current_user as auth_get_current_user
     return auth_get_current_user()
@@ -204,6 +211,17 @@ def chat_login_required(f):
         g.current_user = user
         return f(*args, **kwargs)
     return decorated
+
+
+def _serialize_message(message, current_user_id):
+    payload = message.to_dict(current_user_id=current_user_id)
+    if payload.get('content_type') == 'image' and payload.get('content'):
+        payload['content'] = signed_media_url(
+            'chat',
+            payload['content'],
+            absolute=True,
+        )
+    return payload
 
 
 @chat.route('/messages', methods=['GET'])
@@ -239,7 +257,10 @@ def get_messages():
                  .filter(Message.id > around_id)
                  .order_by(Message.id.asc()).limit(half).all())
         msgs = list(reversed(older)) + [anchor] + list(newer)
-        return jsonify([m.to_dict(current_user_id=user_id) for m in msgs])
+        return jsonify([
+            _serialize_message(message, user_id)
+            for message in msgs
+        ])
 
     q = Message.query.filter_by(project_id=project_id).options(selectinload(Message.reads))
     if before_id:
@@ -248,7 +269,10 @@ def get_messages():
     msgs = q.all()
     msgs.reverse()
 
-    return jsonify([m.to_dict(current_user_id=user_id) for m in msgs])
+    return jsonify([
+        _serialize_message(message, user_id)
+        for message in msgs
+    ])
 
 
 @chat.route('/search', methods=['GET'])
@@ -279,7 +303,10 @@ def search_messages():
     user_id = g.current_user.id
     return jsonify({
         'total': total,
-        'items': [m.to_dict(current_user_id=user_id) for m in msgs],
+        'items': [
+            _serialize_message(message, user_id)
+            for message in msgs
+        ],
     })
 
 
@@ -385,8 +412,9 @@ def upload_image():
 
 
 @chat.route('/images/<filename>')
+@media_required('chat')
 def get_chat_image(filename):
-    """访问聊天图片（公开访问，浏览器 img 标签不需要 token）"""
+    """访问聊天图片：APP 携带 Bearer token，管理页使用登录 Cookie。"""
     # 兜底：消息已撤回时即使磁盘文件删除失败也拒绝访问
     ref = Message.query.filter_by(content_type='image', content=filename).first()
     if ref is not None and ref.recalled:
@@ -398,8 +426,9 @@ def get_chat_image(filename):
 
 
 @chat.route('/images/thumb/<filename>')
+@media_required('chat')
 def get_chat_image_thumb(filename):
-    """聊天气泡缩略图（公开访问）：不存在时按需生成并缓存；动图/生成失败回退原图。
+    """聊天气泡缩略图（需登录）：不存在时按需生成并缓存；动图/生成失败回退原图。
 
     老图片（本功能上线前上传）首次访问自动补生成，无需迁移脚本。
     """
@@ -604,7 +633,7 @@ def register_socketio(socketio):
         db.session.commit()
 
         # 广播到项目群
-        msg_data = msg.to_dict()
+        msg_data = _serialize_message(msg, user.id)
         emit('receive_message', msg_data, room=f'project_{project_id}')
 
     @socketio.on('recall_message')

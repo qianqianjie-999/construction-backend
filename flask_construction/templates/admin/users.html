@@ -52,6 +52,8 @@
         }
         .badge.admin { background: #dbeafe; color: #1e40af; }
         .badge.user { background: #e0e7ff; color: #4338ca; }
+        .badge.enabled { background: #dcfce7; color: #15803d; }
+        .badge.disabled { background: #f1f5f9; color: #94a3b8; }
         .flash {
             background: #fef3c7; color: #92400e; padding: 10px 16px;
             border-radius: 6px; margin-bottom: 12px; font-size: 13px;
@@ -87,6 +89,7 @@
                     <th>用户名</th>
                     <th>昵称</th>
                     <th>角色</th>
+                    <th>状态</th>
                     <th>创建时间</th>
                     <th>操作</th>
                 </tr>
@@ -104,10 +107,24 @@
                         <span class="badge user">普通用户</span>
                         {% endif %}
                     </td>
+                    <td>
+                        {% if u.is_active %}
+                        <span class="badge enabled">已启用</span>
+                        {% else %}
+                        <span class="badge disabled">已禁用</span>
+                        {% endif %}
+                    </td>
                     <td>{{ u.created_at | beijing_time('%Y-%m-%d %H:%M') }}</td>
                     <td>
                         <div class="actions">
                             <a href="/admin/users/{{ u.id }}/edit" class="btn btn-warning">编辑</a>
+                            {% if u.username != 'admin' and u.id != session.get('user_id') %}
+                            <form method="POST" action="/admin/users/{{ u.id }}/toggle">
+                                <button type="submit" class="btn {{ 'btn-secondary' if u.is_active else 'btn-primary' }}">
+                                    {{ '禁用' if u.is_active else '启用' }}
+                                </button>
+                            </form>
+                            {% endif %}
                             {% if u.username != 'admin' %}
                             <form method="POST" action="/admin/users/{{ u.id }}/delete" onsubmit="return confirm('确定删除用户 {{ u.username }} 吗？此操作不可恢复');">
                                 <button type="submit" class="btn btn-danger">删除</button>

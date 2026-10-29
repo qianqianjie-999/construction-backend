@@ -41,6 +41,9 @@ def admin_login_required(f):
         if not user:
             session.clear()
             return redirect(url_for('admin.admin_login'))
+        if not user.is_active:
+            session.clear()
+            return redirect(url_for('admin.admin_login'))
         if user.role != 'admin':
             return "Forbidden: Admin access required", 403
         return f(*args, **kwargs)
@@ -57,7 +60,7 @@ def admin_login():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
         user = User.query.filter_by(username=username).first()
-        if user and user.check_password(password) and user.role == 'admin':
+        if user and user.check_password(password) and user.role == 'admin' and user.is_active:
             _admin_clear_attempts(client_ip)  # 成功则清空该 IP 计数
             session['user_id'] = user.id
             session['username'] = user.username
@@ -371,7 +374,8 @@ def create_user():
         if User.query.filter_by(username=username).first():
             return render_template('admin/user_form.html', error='用户名已存在')
 
-        user = User(username=username, nickname=nickname, role=role)
+        user = User(username=username, nickname=nickname, role=role,
+                    is_active=request.form.get('is_active', '1') == '1')
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
@@ -394,6 +398,11 @@ def edit_user(user_id):
             role = user.role
         user.nickname = nickname
         user.role = role
+        # 状态：默认管理员账户不允许禁用
+        if request.form.get('is_active', '1') == '0' and user.username == 'admin':
+            flash('不能禁用默认管理员账户', 'error')
+        else:
+            user.is_active = request.form.get('is_active', '1') == '1'
         if new_password:
             if len(new_password) < 6:
                 return render_template('admin/user_form.html', user=user, error='密码至少 6 位')
@@ -414,6 +423,23 @@ def delete_user(user_id):
         return redirect(url_for('admin.user_list'))
     db.session.delete(user)
     db.session.commit()
+    return redirect(url_for('admin.user_list'))
+
+
+@admin.route('/admin/users/<int:user_id>/toggle', methods=['POST'])
+@admin_login_required
+def toggle_user_active(user_id):
+    """启用 / 禁用用户（禁用后该账号无法登录，已登录会话立即失效）"""
+    user = User.query.get_or_404(user_id)
+    if user.username == 'admin':
+        flash('不能禁用默认管理员账户', 'error')
+        return redirect(url_for('admin.user_list'))
+    if user.id == session.get('user_id'):
+        flash('不能禁用当前登录的账号', 'error')
+        return redirect(url_for('admin.user_list'))
+    user.is_active = not user.is_active
+    db.session.commit()
+    flash(f'已{ "启用" if user.is_active else "禁用" }用户 {user.username}', 'success')
     return redirect(url_for('admin.user_list'))
 
 

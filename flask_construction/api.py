@@ -9,7 +9,8 @@ from .utils.pdf_generator import generate_pdf_for_project
 api = Blueprint('api', __name__)
 
 # 认证装饰器
-from .auth import login_required
+from .auth import login_required, media_required
+from .media_signing import signed_media_url
 
 # 配置上传文件夹
 UPLOAD_FOLDER = 'uploads'
@@ -133,7 +134,7 @@ def get_logs():
                 'filename': photo.filename,
                 'original_filename': photo.original_filename,
                 'photo_type': photo.photo_type,
-                'url': f'/api/photos/{photo.filename}'
+                'url': signed_media_url('photo', photo.filename, absolute=False),
             } for photo in log.photos]
         }
         result.append(log_data)
@@ -254,8 +255,9 @@ def update_log(log_id):
 
 
 @api.route('/photos/<filename>')
+@media_required('photo')
 def uploaded_file(filename):
-    """提供上传的照片访问（公开访问，浏览器 img 标签不需要 token）"""
+    """提供上传的照片访问，客户端必须携带登录凭据。"""
     return send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)
 
 @api.route('/export/logs', methods=['GET'])

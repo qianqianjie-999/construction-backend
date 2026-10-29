@@ -19,6 +19,8 @@ class User(db.Model):
     nickname = db.Column(db.String(80))               # 昵称（显示名）
     avatar = db.Column(db.String(255))                # 头像文件名
     role = db.Column(db.String(20), default='user')  # 'admin' or 'user'
+    # 账号是否启用：False 表示已被管理员禁用，禁止登录并清退已有会话
+    is_active = db.Column(db.Boolean, default=True, nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def set_password(self, password):
@@ -34,6 +36,7 @@ class User(db.Model):
             'nickname': self.nickname or self.username,
             'avatar': self.avatar,
             'role': self.role,
+            'is_active': bool(self.is_active),
         }
 
 class Project(db.Model):

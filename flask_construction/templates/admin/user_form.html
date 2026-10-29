@@ -76,6 +76,14 @@
                     </select>
                 </div>
                 <div class="form-group">
+                    <label>状态</label>
+                    <select name="is_active">
+                        <option value="1" {{ 'selected' if not user or user.is_active else '' }}>启用</option>
+                        <option value="0" {{ 'selected' if user and not user.is_active else '' }}>禁用</option>
+                    </select>
+                    <div class="hint">禁用后该账号无法登录，已登录的会话会立即失效</div>
+                </div>
+                <div class="form-group">
                     <label>{{ '重置密码（可选）' if user else '密码' }}</label>
                     <input type="password" name="password" {{ '' if user else 'required' }} placeholder="{{ '留空则不修改密码' if user else '至少 6 位' }}">
                     <div class="hint">{{ '留空表示不修改密码' if user else '至少 6 位字符' }}</div>
