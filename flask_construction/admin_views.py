@@ -398,11 +398,7 @@ def edit_user(user_id):
             role = user.role
         user.nickname = nickname
         user.role = role
-        # 状态：默认管理员账户不允许禁用
-        if request.form.get('is_active', '1') == '0' and user.username == 'admin':
-            flash('不能禁用默认管理员账户', 'error')
-        else:
-            user.is_active = request.form.get('is_active', '1') == '1'
+        user.is_active = request.form.get('is_active', '1') == '1'
         if new_password:
             if len(new_password) < 6:
                 return render_template('admin/user_form.html', user=user, error='密码至少 6 位')
@@ -431,12 +427,6 @@ def delete_user(user_id):
 def toggle_user_active(user_id):
     """启用 / 禁用用户（禁用后该账号无法登录，已登录会话立即失效）"""
     user = User.query.get_or_404(user_id)
-    if user.username == 'admin':
-        flash('不能禁用默认管理员账户', 'error')
-        return redirect(url_for('admin.user_list'))
-    if user.id == session.get('user_id'):
-        flash('不能禁用当前登录的账号', 'error')
-        return redirect(url_for('admin.user_list'))
     user.is_active = not user.is_active
     db.session.commit()
     flash(f'已{ "启用" if user.is_active else "禁用" }用户 {user.username}', 'success')

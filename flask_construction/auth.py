@@ -239,10 +239,7 @@ def update_user(user_id):
         user.role = data['role']
 
     if 'is_active' in data:
-        is_active = bool(data['is_active'])
-        if not is_active and user.username == 'admin':
-            return jsonify({'error': 'Cannot disable the admin account'}), 400
-        user.is_active = is_active
+        user.is_active = bool(data['is_active'])
 
     db.session.commit()
     return jsonify(user.to_dict())

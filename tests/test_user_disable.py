@@ -122,35 +122,43 @@ class UserDisableTest(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertTrue(self._user_is_active(self.user_id))
 
-    def test_cannot_disable_default_admin(self):
-        self._login_admin()
+    def test_can_disable_default_admin(self):
+        self._login_admin(self.admin_client, username="admin2", password="admin2pass")
 
         response = self._toggle(self.admin_id)
 
-        self.assertIn("不能禁用默认管理员账户", response.get_data(as_text=True))
-        self.assertTrue(self._user_is_active(self.admin_id))
+        self.assertIn("已禁用用户 admin", response.get_data(as_text=True))
+        self.assertFalse(self._user_is_active(self.admin_id))
 
-    def test_cannot_disable_self(self):
+    def test_disabled_admin_login_returns_to_login_page(self):
+        self._login_admin()
+        self._toggle(self.admin_id)
+        self.assertFalse(self._user_is_active(self.admin_id))
+
+        client = self.app.test_client()
+        response = client.post(
+            "/admin/login", data={"username": "admin", "password": "admin123"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("用户名或密码错误", response.get_data(as_text=True))
+
+    def test_can_disable_self(self):
         self._login_admin(self.user_client, username="admin2", password="admin2pass")
 
-        response = self._toggle(self.another_admin_id, client=self.user_client)
+        response = self.user_client.post(f"/admin/users/{self.another_admin_id}/toggle")
 
-        self.assertIn("不能禁用当前登录的账号", response.get_data(as_text=True))
-        self.assertTrue(self._user_is_active(self.another_admin_id))
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(self._user_is_active(self.another_admin_id))
+        # 禁用自己后，当前会话立即失效
+        self.assertEqual(self.user_client.get("/admin/users").status_code, 302)
 
     def test_disabled_admin_cannot_access_admin_pages(self):
         self._login_admin()
-        self._toggle(self.admin_id)  # 默认管理员受保护，禁用不会生效
-        self.assertTrue(self._user_is_active(self.admin_id))
+        self._toggle(self.admin_id)
+        self.assertFalse(self._user_is_active(self.admin_id))
 
-        another_client = self.app.test_client()
-        self._login_admin(another_client, username="admin2", password="admin2pass")
-        with self.app.app_context():
-            admin2 = db.session.get(User, self.another_admin_id)
-            admin2.is_active = False
-            db.session.commit()
-
-        response = another_client.get("/admin/users")
+        response = self.admin_client.get("/admin/users")
 
         self.assertEqual(response.status_code, 302)
         self.assertIn("/admin/login", response.headers.get("Location", ""))
@@ -167,12 +175,12 @@ class UserDisableTest(unittest.TestCase):
         self.assertIn("已启用", body)
         self.assertIn(f"/admin/users/{self.user_id}/toggle", body)
 
-    def test_user_list_hides_toggle_for_default_admin(self):
+    def test_user_list_shows_toggle_for_default_admin(self):
         self._login_admin()
 
         body = self.admin_client.get("/admin/users").get_data(as_text=True)
 
-        self.assertNotIn(f"/admin/users/{self.admin_id}/toggle", body)
+        self.assertIn(f"/admin/users/{self.admin_id}/toggle", body)
 
     def test_edit_form_can_set_inactive(self):
         self._login_admin()
@@ -189,17 +197,16 @@ class UserDisableTest(unittest.TestCase):
             user = db.session.get(User, self.user_id)
             self.assertFalse(user.is_active)
 
-    def test_edit_form_cannot_disable_default_admin(self):
+    def test_edit_form_can_disable_default_admin(self):
         self._login_admin()
 
         response = self.admin_client.post(
             f"/admin/users/{self.admin_id}/edit",
             data={"nickname": "管理员", "role": "admin", "is_active": "0", "password": ""},
-            follow_redirects=True,
         )
 
-        self.assertIn("不能禁用默认管理员账户", response.get_data(as_text=True))
-        self.assertTrue(self._user_is_active(self.admin_id))
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(self._user_is_active(self.admin_id))
 
     def test_create_user_defaults_to_active(self):
         self._login_admin()
@@ -249,7 +256,7 @@ class UserDisableTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self._login_user().status_code, 200)
 
-    def test_api_cannot_disable_default_admin(self):
+    def test_api_can_disable_default_admin(self):
         with self.app.app_context():
             token = generate_token(self.admin_id)
         response = self.admin_client.put(
@@ -258,8 +265,9 @@ class UserDisableTest(unittest.TestCase):
             headers={"Authorization": f"Bearer {token}"},
         )
 
-        self.assertEqual(response.status_code, 400)
-        self.assertTrue(self._user_is_active(self.admin_id))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.get_json().get("is_active"))
+        self.assertFalse(self._user_is_active(self.admin_id))
 
 
 if __name__ == "__main__":

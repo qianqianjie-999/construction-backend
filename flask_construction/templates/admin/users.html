@@ -118,13 +118,11 @@
                     <td>
                         <div class="actions">
                             <a href="/admin/users/{{ u.id }}/edit" class="btn btn-warning">编辑</a>
-                            {% if u.username != 'admin' and u.id != session.get('user_id') %}
                             <form method="POST" action="/admin/users/{{ u.id }}/toggle">
                                 <button type="submit" class="btn {{ 'btn-secondary' if u.is_active else 'btn-primary' }}">
                                     {{ '禁用' if u.is_active else '启用' }}
                                 </button>
                             </form>
-                            {% endif %}
                             {% if u.username != 'admin' %}
                             <form method="POST" action="/admin/users/{{ u.id }}/delete" onsubmit="return confirm('确定删除用户 {{ u.username }} 吗？此操作不可恢复');">
                                 <button type="submit" class="btn btn-danger">删除</button>
