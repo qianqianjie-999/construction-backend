@@ -1,0 +1,7 @@
+[Unit]
+Description=Construction backend HTTP health probe (auto restart on failure)
+After=construction-backend.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/construction-healthcheck.sh

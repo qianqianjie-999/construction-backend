@@ -18,9 +18,11 @@ worker_class = "gevent"
 # worker 数量只能是 1（Socket.IO 长连接需要单进程）
 workers = 1
 
-# 每个 worker 最大请求数（防内存泄漏）
-max_requests = 10000
-max_requests_jitter = 500
+# 按请求数滚动重启会卡死 gevent 单 worker + Socket.IO 长连接：
+# 2026-11-13 21:44:41 触发 Autorestarting -> 21:46:41 WORKER TIMEOUT，
+# master 假活、worker 僵尸，业务中断 11h+。故关闭，改由外部探活兜底。
+max_requests = 0
+max_requests_jitter = 0
 
 # 超时（Socket.IO 长连接要长一点）
 timeout = 120
