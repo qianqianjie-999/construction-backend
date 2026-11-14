@@ -9,9 +9,14 @@
 #   其它/超时 -> 应用层卡死（worker 假活等）：连续失败 2 次后重启
 #
 # 通知：可选。在 /etc/construction-healthcheck.env 里配置
-#   NOTIFY_WEBHOOK=<飞书自定义机器人 或 钉钉自定义机器人 webhook>
+#   NOTIFY_WEBHOOK=<机器人 webhook 或 pushplus>
+#     钉钉/企业微信: https://oapi.dingtalk.com/robot/send?access_token=xxx
+#                    https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx
+#     飞书:          https://open.feishu.cn/open-apis/bot/v2/hook/xxx
+#     PushPlus(个人微信推送): 填 pushplus，token 放 NOTIFY_TOKEN
 #   NOTIFY_SECRET=<钉钉机器人「加签」密钥，选关键词模式时留空>
-# 报文格式按 webhook 域名自动适配（dingtalk / feishu）。留空则只写 journald。
+#   NOTIFY_TOKEN=<PushPlus 的 token>
+# 报文格式按 webhook 域名自动适配。留空则只写 journald。
 set -u
 
 URL="http://127.0.0.1:8082/healthz"
@@ -36,8 +41,8 @@ notify() {
     [ -n "${NOTIFY_WEBHOOK:-}" ] || return 0
     url="$NOTIFY_WEBHOOK"
     case "$url" in
-        *dingtalk*)
-            # 钉钉：msgtype/text.content
+        *dingtalk*|*qyapi.weixin.qq.com*)
+            # 钉钉 / 企业微信：msgtype -> text.content
             body='{"msgtype":"text","text":{"content":"'"$text"'"}}'
             if [ -n "${NOTIFY_SECRET:-}" ]; then
                 ts="$(date +%s)000"
@@ -50,15 +55,24 @@ print(urllib.parse.quote_plus(base64.b64encode(digest)))
                 [ -n "$sign" ] && url="${url}&timestamp=${ts}&sign=${sign}"
             fi
             ;;
+        *pushplus*)
+            # PushPlus：推送到个人微信，token 放 NOTIFY_TOKEN
+            if [ -z "${NOTIFY_TOKEN:-}" ]; then
+                say "NOTIFY 未配置 NOTIFY_TOKEN，跳过"
+                return 0
+            fi
+            url="https://www.pushplus.plus/send"
+            body='{"token":"'"$NOTIFY_TOKEN"'","title":"C32 施工日志后端告警","content":"'"$text"'","template":"txt"}'
+            ;;
         *)
-            # 飞书：msg_type/content.text
+            # 飞书：msg_type -> content.text
             body='{"msg_type":"text","content":{"text":"'"$text"'"}}'
             ;;
     esac
     resp="$(curl -sS --max-time 5 -H 'Content-Type: application/json' \
         -d "$body" "$url" 2>&1)" || { say "NOTIFY 请求失败"; return 0; }
     case "$resp" in
-        *'"errcode":0'*|*'"code":0'*|*'"StatusCode":0'*|*'"status_code":0'*) ;;
+        *'"errcode":0'*|*'"code":0'*|*'"code":200'*|*'"StatusCode":0'*|*'"status_code":0'*) ;;
         *) say "NOTIFY 返回异常: $resp" ;;
     esac
 }
