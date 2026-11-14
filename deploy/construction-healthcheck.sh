@@ -87,13 +87,13 @@ notify_email() {
         say "NOTIFY 邮件未配置完整（缺发件邮箱或授权码），跳过"
         return 0
     fi
-    MAIL_TO="$NOTIFY_EMAIL_TO" \
+    if MAIL_TO="$NOTIFY_EMAIL_TO" \
     MAIL_USER="${NOTIFY_EMAIL_USER:-}" \
     MAIL_PASS="${NOTIFY_EMAIL_PASS:-}" \
     MAIL_HOST="${NOTIFY_EMAIL_HOST:-smtp.163.com}" \
     MAIL_PORT="${NOTIFY_EMAIL_PORT:-465}" \
     MAIL_BODY="$text" \
-    python3 - <<'PY' || say "NOTIFY 邮件发送失败"
+    python3 - <<'PY'
 import os, smtplib, ssl
 from email.header import Header
 from email.mime.text import MIMEText
@@ -116,6 +116,11 @@ with smtplib.SMTP_SSL(host, port, timeout=15, context=ctx) as s:
     s.login(user, password)
     s.sendmail(user, to, msg.as_string())
 PY
+    then
+        say "NOTIFY 邮件已发送 -> $NOTIFY_EMAIL_TO"
+    else
+        say "NOTIFY 邮件发送失败"
+    fi
 }
 
 notify() {
