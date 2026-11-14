@@ -9,8 +9,9 @@
 #   其它/超时 -> 应用层卡死（worker 假活等）：连续失败 2 次后重启
 #
 # 通知：可选。在 /etc/construction-healthcheck.env 里配置
-#   NOTIFY_WEBHOOK=<飞书自定义机器人 webhook>
-# 留空则只写 journald。
+#   NOTIFY_WEBHOOK=<飞书自定义机器人 或 钉钉自定义机器人 webhook>
+#   NOTIFY_SECRET=<钉钉机器人「加签」密钥，选关键词模式时留空>
+# 报文格式按 webhook 域名自动适配（dingtalk / feishu）。留空则只写 journald。
 set -u
 
 URL="http://127.0.0.1:8082/healthz"
@@ -33,11 +34,33 @@ say() { printf '%s %s\n' "$(date '+%F %T')" "$*"; }
 notify() {
     text="$1"
     [ -n "${NOTIFY_WEBHOOK:-}" ] || return 0
-    body='{"msg_type":"text","content":{"text":"'"$text"'"}}'
-    if ! curl -sS --max-time 5 -H 'Content-Type: application/json' \
-        -d "$body" "$NOTIFY_WEBHOOK" >/dev/null 2>&1; then
-        say "NOTIFY 发送失败"
-    fi
+    url="$NOTIFY_WEBHOOK"
+    case "$url" in
+        *dingtalk*)
+            # 钉钉：msgtype/text.content
+            body='{"msgtype":"text","text":{"content":"'"$text"'"}}'
+            if [ -n "${NOTIFY_SECRET:-}" ]; then
+                ts="$(date +%s)000"
+                sign="$(python3 -c '
+import base64, hashlib, hmac, sys, urllib.parse
+ts, sec = sys.argv[1], sys.argv[2]
+digest = hmac.new(sec.encode(), ("%s\n%s" % (ts, sec)).encode(), hashlib.sha256).digest()
+print(urllib.parse.quote_plus(base64.b64encode(digest)))
+' "$ts" "$NOTIFY_SECRET" 2>/dev/null)"
+                [ -n "$sign" ] && url="${url}&timestamp=${ts}&sign=${sign}"
+            fi
+            ;;
+        *)
+            # 飞书：msg_type/content.text
+            body='{"msg_type":"text","content":{"text":"'"$text"'"}}'
+            ;;
+    esac
+    resp="$(curl -sS --max-time 5 -H 'Content-Type: application/json' \
+        -d "$body" "$url" 2>&1)" || { say "NOTIFY 请求失败"; return 0; }
+    case "$resp" in
+        *'"errcode":0'*|*'"code":0'*|*'"StatusCode":0'*|*'"status_code":0'*) ;;
+        *) say "NOTIFY 返回异常: $resp" ;;
+    esac
 }
 
 code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time "$MAXTIME" "$URL" 2>/dev/null || true)"
