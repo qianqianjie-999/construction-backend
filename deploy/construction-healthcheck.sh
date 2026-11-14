@@ -16,7 +16,12 @@
 #     PushPlus(个人微信推送): 填 pushplus，token 放 NOTIFY_TOKEN
 #   NOTIFY_SECRET=<钉钉机器人「加签」密钥，选关键词模式时留空>
 #   NOTIFY_TOKEN=<PushPlus 的 token>
-# 报文格式按 webhook 域名自动适配。留空则只写 journald。
+# 邮件告警（与上面互不影响，填了 NOTIFY_EMAIL_TO 就会发邮件）：
+#   NOTIFY_EMAIL_TO=收件人（可逗号分隔多个）
+#   NOTIFY_EMAIL_USER=发件邮箱，如 yanjie086@163.com
+#   NOTIFY_EMAIL_PASS=邮箱「客户端授权码」（不是登录密码）
+#   NOTIFY_EMAIL_HOST=smtp.163.com   NOTIFY_EMAIL_PORT=465（SSL）
+# 报文格式按 webhook 域名自动适配。全部留空则只写 journald。
 set -u
 
 URL="http://127.0.0.1:8082/healthz"
@@ -36,9 +41,8 @@ flock -n 9 || exit 0
 
 say() { printf '%s %s\n' "$(date '+%F %T')" "$*"; }
 
-notify() {
+notify_webhook() {
     text="$1"
-    [ -n "${NOTIFY_WEBHOOK:-}" ] || return 0
     url="$NOTIFY_WEBHOOK"
     case "$url" in
         *dingtalk*|*qyapi.weixin.qq.com*)
@@ -75,6 +79,45 @@ print(urllib.parse.quote_plus(base64.b64encode(digest)))
         *'"errcode":0'*|*'"code":0'*|*'"code":200'*|*'"StatusCode":0'*|*'"status_code":0'*) ;;
         *) say "NOTIFY 返回异常: $resp" ;;
     esac
+}
+
+notify_email() {
+    text="$1"
+    MAIL_TO="$NOTIFY_EMAIL_TO" \
+    MAIL_USER="${NOTIFY_EMAIL_USER:-}" \
+    MAIL_PASS="${NOTIFY_EMAIL_PASS:-}" \
+    MAIL_HOST="${NOTIFY_EMAIL_HOST:-smtp.163.com}" \
+    MAIL_PORT="${NOTIFY_EMAIL_PORT:-465}" \
+    MAIL_BODY="$text" \
+    python3 - <<'PY' || say "NOTIFY 邮件发送失败"
+import os, smtplib, ssl
+from email.header import Header
+from email.mime.text import MIMEText
+from email.utils import formataddr
+
+host = os.environ["MAIL_HOST"]
+port = int(os.environ["MAIL_PORT"])
+user = os.environ["MAIL_USER"]
+password = os.environ["MAIL_PASS"]
+to = [a.strip() for a in os.environ["MAIL_TO"].split(",") if a.strip()]
+body = os.environ["MAIL_BODY"]
+
+msg = MIMEText(body, "plain", "utf-8")
+msg["Subject"] = Header("[C32] 施工日志后端告警", "utf-8")
+msg["From"] = formataddr((str(Header("C32 施工日志后端", "utf-8")), user))
+msg["To"] = ", ".join(to)
+
+ctx = ssl.create_default_context()
+with smtplib.SMTP_SSL(host, port, timeout=15, context=ctx) as s:
+    s.login(user, password)
+    s.sendmail(user, to, msg.as_string())
+PY
+}
+
+notify() {
+    text="$1"
+    if [ -n "${NOTIFY_WEBHOOK:-}" ]; then notify_webhook "$text"; fi
+    if [ -n "${NOTIFY_EMAIL_TO:-}" ]; then notify_email "$text"; fi
 }
 
 code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time "$MAXTIME" "$URL" 2>/dev/null || true)"
