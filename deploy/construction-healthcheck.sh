@@ -83,6 +83,10 @@ print(urllib.parse.quote_plus(base64.b64encode(digest)))
 
 notify_email() {
     text="$1"
+    if [ -z "${NOTIFY_EMAIL_USER:-}" ] || [ -z "${NOTIFY_EMAIL_PASS:-}" ]; then
+        say "NOTIFY 邮件未配置完整（缺发件邮箱或授权码），跳过"
+        return 0
+    fi
     MAIL_TO="$NOTIFY_EMAIL_TO" \
     MAIL_USER="${NOTIFY_EMAIL_USER:-}" \
     MAIL_PASS="${NOTIFY_EMAIL_PASS:-}" \
