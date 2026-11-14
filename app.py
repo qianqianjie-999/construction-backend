@@ -1,4 +1,4 @@
-from flask import Flask, session, redirect, url_for, request
+from flask import Flask, session, redirect, url_for, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO
 from flask_construction.models import db
@@ -164,6 +164,19 @@ def create_app(config_name=None):
     @app.route('/')
     def index():
         return redirect('/admin')
+
+    # 健康探针：真正触库（SELECT 1），供 construction-healthcheck.timer 使用。
+    # 与 /admin/login 的区别：DB 挂了但页面还能渲染时，这里能返回 503 暴露出来。
+    @app.route('/healthz')
+    def healthz():
+        from sqlalchemy import text
+        try:
+            with db.engine.connect() as conn:
+                conn.execute(text('SELECT 1'))
+        except Exception as e:
+            app.logger.warning(f'healthz 数据库探测失败: {e}')
+            return jsonify(status='error', db='down', detail=str(e)), 503
+        return jsonify(status='ok', db='up'), 200
 
     # 启动时自动补列（幂等）
     _ensure_project_sort_column(app)

@@ -1,0 +1,7 @@
+[Unit]
+Description=Nightly restart of construction backend (bounds memory growth)
+After=construction-backend.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl restart construction-backend.service

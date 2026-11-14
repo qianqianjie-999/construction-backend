@@ -4,4 +4,5 @@ After=construction-backend.service
 
 [Service]
 Type=oneshot
+EnvironmentFile=-/etc/construction-healthcheck.env
 ExecStart=/usr/local/sbin/construction-healthcheck.sh

@@ -39,5 +39,11 @@ loglevel  = "info"
 # ---- 进程名 ----
 proc_name = "construction-gunicorn"
 
-# ---- 预加载（让 gevent patch 在 fork 之前完成）----
-preload_app = True
+# ---- 预加载 ----
+# 必须为 False：
+# wsgi.py 顶层执行 gevent.monkey.patch_all()，preload=True 会让 patch 在 fork 之前
+# 打进 master，把 Arbiter 自己的 waitpid/select 也换成 gevent 实现。worker 一旦
+# WORKER TIMEOUT 被 kill，master 就收不到/处理不了 SIGCHLD，不再重建 worker，
+# 表现为「进程在、8082 在监听、业务全挂、systemd 认为 active」。
+# 2026-11-13 21:44 的 11 小时中断即此链路，preload 对 161MB 峰值无收益，改回 False。
+preload_app = False

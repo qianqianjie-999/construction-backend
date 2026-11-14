@@ -1,0 +1,11 @@
+[Unit]
+Description=Restart construction backend daily at 04:00
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+AccuracySec=1min
+Unit=construction-restart.service
+
+[Install]
+WantedBy=timers.target
